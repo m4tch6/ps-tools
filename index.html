@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f172a">
-<title>パチ・スロ ツール</title>
+<title>ツールのカケラ</title>
 <meta name="description" content="回転率計算と設定判別（ガルパン／スタァライト／虚構推理）をまとめたツール集。">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -13,6 +13,7 @@
   :root{
     --bg:#f6f7f9; --card:#ffffff; --line:#e4e7ec; --line-soft:#eef0f3;
     --ink:#101828; --muted:#667085; --faint:#98a2b3;
+    --accent:#0f7a68;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0; background:var(--bg); color:var(--ink);
@@ -20,37 +21,68 @@
     font-feature-settings:"palt"; -webkit-font-smoothing:antialiased;}
   body{max-width:560px; margin:0 auto; padding:0 16px calc(40px + env(safe-area-inset-bottom));}
 
-  header{padding:34px 4px 22px;}
-  h1{margin:0; font-size:19px; font-weight:700; letter-spacing:.1em;}
-  h1 em{font-style:normal; color:#0f7a68;}
-  .sub{margin:8px 0 0; font-size:12px; line-height:1.7; color:var(--muted); letter-spacing:.02em;}
+  header{padding:30px 4px 6px;}
+  h1{margin:0; font-size:20px; font-weight:700; letter-spacing:.12em;}
+  h1 em{font-style:normal; color:var(--accent);}
 
-  .sec{margin:26px 0 10px; padding:0 4px;
+  /* ---------- RKちゃま ---------- */
+  .rk{display:flex; align-items:flex-end; gap:8px; margin:14px 0 4px; padding:0 2px;
+    cursor:pointer; user-select:none;}
+  .rk-fig{flex:none; width:78px; margin-bottom:-2px;}
+  .rk-fig img{display:block; width:100%; height:auto;
+    filter:drop-shadow(0 3px 6px rgba(16,24,40,.14));
+    animation:rk-bob 4.5s ease-in-out infinite;}
+  @keyframes rk-bob{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+
+  .rk-bubble{flex:1; min-width:0; position:relative; margin-bottom:16px;
+    background:var(--card); border:1px solid var(--line-soft); border-radius:14px;
+    box-shadow:0 2px 10px -4px rgba(16,24,40,.16);
+    padding:11px 13px; min-height:62px;
+    display:flex; align-items:center;}
+  /* 吹き出しのしっぽ（枠線ぶんを重ねて2枚で表現） */
+  .rk-bubble::before, .rk-bubble::after{
+    content:""; position:absolute; left:-8px; top:26px;
+    border-style:solid; border-width:6px 8px 6px 0;}
+  .rk-bubble::before{border-color:transparent var(--line-soft) transparent transparent;}
+  .rk-bubble::after{left:-7px; border-color:transparent var(--card) transparent transparent;}
+
+  .rk-text{font-size:12.5px; line-height:1.7; color:var(--ink); letter-spacing:.01em;}
+  .rk-text.in{animation:rk-in .45s cubic-bezier(.22,.68,.36,1) both;}
+  @keyframes rk-in{
+    from{opacity:0; transform:translateX(10px);}
+    to{opacity:1; transform:translateX(0);}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .rk-fig img{animation:none;}
+    .rk-text.in{animation:rk-fade .3s ease both;}
+    @keyframes rk-fade{from{opacity:0} to{opacity:1}}
+  }
+
+  /* ---------- カード ---------- */
+  .sec{margin:24px 0 9px; padding:0 4px;
     font-size:10.5px; font-weight:600; letter-spacing:.22em; color:var(--faint);}
 
-  .grid{display:flex; flex-direction:column; gap:10px;}
-  .card{display:flex; align-items:center; gap:14px;
-    background:var(--card); border:1px solid var(--line-soft); border-radius:16px;
-    padding:16px 15px; text-decoration:none; color:inherit;
+  .grid{display:flex; flex-direction:column; gap:9px;}
+  .card{display:flex; align-items:center; gap:13px;
+    background:var(--card); border:1px solid var(--line-soft); border-radius:15px;
+    padding:12px 14px; text-decoration:none; color:inherit;
     box-shadow:0 1px 2px rgba(16,24,40,.04);
     transition:transform .12s ease, box-shadow .18s ease, border-color .18s ease;}
   .card:active{transform:scale(.985); background:#fbfcfd;}
   @media (hover:hover){ .card:hover{box-shadow:0 8px 24px -12px rgba(16,24,40,.22); border-color:var(--line);} }
 
-  .ic{flex:none; width:46px; height:46px; border-radius:13px; overflow:hidden;
+  .ic{flex:none; width:44px; height:44px; border-radius:12px; overflow:hidden;
     display:flex; align-items:center; justify-content:center;
-    font-size:17px; font-weight:700; letter-spacing:.02em; color:#fff;}
+    box-shadow:inset 0 0 0 1px rgba(16,24,40,.08);}
   .ic img{width:100%; height:100%; object-fit:cover; display:block;}
-  .ic--img{box-shadow:inset 0 0 0 1px rgba(16,24,40,.08);}
-  .body{min-width:0; flex:1;}
-  .t{font-size:14.5px; font-weight:600; letter-spacing:.03em; line-height:1.35;}
-  .d{margin-top:5px; font-size:11.5px; line-height:1.6; color:var(--muted);}
+  .t{flex:1; min-width:0; font-size:16px; font-weight:600; letter-spacing:.04em; line-height:1.35;}
   .arrow{flex:none; color:var(--faint);}
 
-  .tag{display:inline-block; margin-left:7px; padding:2px 7px; border-radius:5px;
-    font-size:9.5px; font-weight:600; letter-spacing:.06em; vertical-align:1.5px;
-    color:#0f7a68; background:#e6f4f1;}
+  .tag{display:inline-block; margin-left:8px; padding:2px 7px; border-radius:5px;
+    font-size:9.5px; font-weight:600; letter-spacing:.06em; vertical-align:2.5px;
+    color:var(--accent); background:#e6f4f1;}
 
+  /* ---------- メモ ---------- */
   .note{margin-top:22px; background:var(--card); border:1px solid var(--line-soft);
     border-radius:14px; padding:15px 16px;}
   .note h2{margin:0 0 8px; font-size:11.5px; font-weight:600; letter-spacing:.1em; color:var(--ink);}
@@ -64,18 +96,19 @@
 <body>
 
 <header>
-  <h1>パチ・スロ<em>ツール</em></h1>
-  <p class="sub">回転率の計測と、機種別の設定判別。<br>スマホでそのまま使えます。</p>
+  <h1>ツールの<em>カケラ</em></h1>
 </header>
+
+<div class="rk" id="rk" role="button" tabindex="0" aria-label="RKちゃまの台詞を切り替える">
+  <div class="rk-fig"><img src="rk.png" alt="RKちゃま" width="216" height="320" decoding="async"></div>
+  <div class="rk-bubble"><span class="rk-text" id="rkText"></span></div>
+</div>
 
 <div class="sec">パチンコ</div>
 <div class="grid">
   <a class="card" href="kaiten/">
-    <div class="ic" style="background:linear-gradient(145deg,#12907a,#0d6355)">回</div>
-    <div class="body">
-      <div class="t">回転率メーター</div>
-      <div class="d">データグラフの写真から差玉を読み取り、回転率とボーダー差を算出。台番号つきで記録も残せます。</div>
-    </div>
+    <div class="ic"><img src="kaiten/icon.jpg" alt="" width="192" height="192" loading="lazy" decoding="async"></div>
+    <div class="t">回転率計算</div>
     <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
   </a>
 </div>
@@ -83,29 +116,20 @@
 <div class="sec">スロット 設定判別</div>
 <div class="grid">
   <a class="card" href="garupan/">
-    <div class="ic ic--img"><img src="garupan/icon.jpg" alt="" width="192" height="192" loading="lazy" decoding="async"></div>
-    <div class="body">
-      <div class="t">ガルパン最終章</div>
-      <div class="d">高確状態を追いながらチャンスゾーンの発展・当落から設定を推定。AT終了画面や示唆にも対応。</div>
-    </div>
+    <div class="ic"><img src="garupan/icon.jpg" alt="" width="192" height="192" loading="lazy" decoding="async"></div>
+    <div class="t">ガルパン最終章</div>
     <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
   </a>
 
   <a class="card" href="starlight/">
-    <div class="ic ic--img"><img src="starlight/icon.jpg" alt="" width="192" height="192" loading="lazy" decoding="async"></div>
-    <div class="body">
-      <div class="t">レヴュースタァライト</div>
-      <div class="d">小役・ボーナス・CZ確率にランプ色、終了画面、ボイス、メダルの示唆を合算して判別。</div>
-    </div>
+    <div class="ic"><img src="starlight/icon.jpg" alt="" width="192" height="192" loading="lazy" decoding="async"></div>
+    <div class="t">レヴュースタァライト</div>
     <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
   </a>
 
   <a class="card" href="kyokou/">
-    <div class="ic ic--img"><img src="kyokou/icon.jpg" alt="" width="192" height="192" loading="lazy" decoding="async"></div>
-    <div class="body">
-      <div class="t">L虚構推理<span class="tag">NEW</span></div>
-      <div class="d">CZ・天井・RB中キャラ・終了画面・EDセリフ・トロフィーからベイズ推定。終了画面は画像つきで選べます。</div>
-    </div>
+    <div class="ic"><img src="kyokou/icon.jpg" alt="" width="192" height="192" loading="lazy" decoding="async"></div>
+    <div class="t">L虚構推理<span class="tag">NEW</span></div>
     <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
   </a>
 </div>
@@ -120,6 +144,80 @@
 <footer>
   設定判別の推定値は各解析サイトの公開値に基づく参考値です。実際の設定を保証するものではありません。
 </footer>
+
+<script>
+(function(){
+  "use strict";
+  /* 台詞は rk-lines.txt（1行1台詞）を読み込む。増やしたいときはそのファイルを編集するだけ。
+     file:// で直接開いた場合は fetch がブロックされるため、下の控えを使う。 */
+  var FALLBACK = [
+    "下振れは二度と返って来ないのですよ",
+    "みぃー、noteは”ぺいとぅうぃん”なのです",
+    "冷遇なんてものは存在しないのですよ。にぱー☆",
+    "すぐ下振れを言い訳にするのは、いけないことなのですか？",
+    "負けが続いているときは、立ち回りを見直したほうがいいのですよ",
+    "ときには神頼みも必要なのです。にぱー☆",
+    "AIはすごいのです。ぼくもハイカラなツールを作りたいのです！",
+    "1000円スタートがわかるころには、多額の負債を負っているものです",
+    "穢れはだいたい罠なのです。みぃ...",
+    "示唆は所詮、示唆なのですよ",
+    "高射幸機にはついていけないのです",
+    "にぱー☆今日こそは大勝ちするのですよ！",
+    "赤坂、どうしてみぃの台はずっとデモ画面なのですか？",
+    "メンソールばかり吸っていると、イ◯ポになってしまうのですよ",
+    "圭一、どうして1000円ずつ入金してるのですか？",
+    "圭一、そのレバーを下から叩くのをやめなさい",
+    "圭一、カードを抜き差しするのはやめなさい",
+    "羽生、遊戯ではなく遊技だと、何度言えばわかるのかしら？",
+    "公由、さっきからアンタの口が臭いのよ",
+    "楽しくパチスロを打ちたい。それだけなの。それ以上は、何も望んでいないの"
+  ];
+
+  var el = document.getElementById("rkText");
+  var box = document.getElementById("rk");
+  var lines = FALLBACK, last = -1, timer = null;
+
+  // 吹き出し自体が発話を表すので、前後の「」は外して表示する
+  function strip(s){ return s.replace(/^[「『]/, "").replace(/[」』]$/, "").trim(); }
+
+  function pick(){
+    if(lines.length < 2) return lines[0] || "";
+    var i;
+    do { i = Math.floor(Math.random() * lines.length); } while(i === last);
+    last = i;
+    return lines[i];
+  }
+
+  function show(){
+    el.classList.remove("in");
+    void el.offsetWidth;          // アニメーションを再生し直すためのリフロー
+    el.textContent = pick();
+    el.classList.add("in");
+  }
+
+  function restart(){
+    clearInterval(timer);
+    timer = setInterval(show, 7000);
+  }
+
+  box.addEventListener("click", function(){ show(); restart(); });
+  box.addEventListener("keydown", function(e){
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); show(); restart(); }
+  });
+
+  show();
+  restart();
+
+  fetch("rk-lines.txt", {cache:"no-cache"})
+    .then(function(r){ return r.ok ? r.text() : null; })
+    .then(function(t){
+      if(!t) return;
+      var a = t.split(/\r?\n/).map(strip).filter(Boolean);
+      if(a.length){ lines = a; last = -1; }
+    })
+    .catch(function(){});
+})();
+</script>
 
 </body>
 </html>
