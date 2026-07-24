@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スマスロ 少女☆歌劇 レヴュースタァライト 設定判別 v3</title>
+<link rel="manifest" href="../manifest.webmanifest">
+    
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="favicon.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #fff1f2; color: #881337; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        .btn-base { transition: all 0.1s ease-out; touch-action: manipulation; user-select: none; position: relative; z-index: 10; }
+        .btn-base:active:not(:disabled) { transform: scale(0.97); opacity: 0.9; }
+        .btn-base:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); z-index: 0; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(190, 18, 60, 0.1); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .bg-starlight { background-color: #e11d48; }
+        .text-starlight { color: #e11d48; }
+        .border-starlight { border-color: #fb7185; }
+        
+        .text-gold { color: #d97706; }
+        .text-rainbow {
+            background: linear-gradient(to right, #ef4444, #f59e0b, #10b981, #3b82f6, #8b5cf6, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            color: transparent;
+            display: inline-block;
+        }
+
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+          -webkit-appearance: none; 
+          margin: 0; 
+        }
+
+        th, td { padding: 4px; }
+    </style>
+</head>
+<body>
+<style>
+  .portal-back{display:flex;align-items:center;gap:6px;padding:11px 14px;
+    font:500 13px/1 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;text-decoration:none;}
+  .portal-back:active{background:#f1f5f9;}
+</style>
+<a class="portal-back" href="../">← ツール一覧</a>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- Data & Constants ---
+        const SETTINGS = [1, 2, 4, 5, 6];
+
+        const DATA = {
+            cz: { 1: 265.9, 2: 254.7, 4: 207.6, 5: 190.3, 6: 179.5 },
+            at: { 1: 359.6, 2: 346.8, 4: 277.1, 5: 255.7, 6: 232.5 },
+            bonusProb: {
+                rb: { 1: 621.9, 2: 604.3, 4: 526.3, 5: 499.7, 6: 465.0 },
+                bb: { 1: 262.9, 2: 260.8, 4: 250.9, 5: 247.2, 6: 245.2 },
+                total: { 1: 184.8, 2: 182.2, 4: 169.9, 5: 165.4, 6: 160.6 }
+            },
+            specificBonus: {
+                'kirameki_reg': { 1: 7282, 2: 6554, 4: 4681, 5: 4096, 6: 3449 },
+                'chance_reg':   { 1: 2341, 2: 2341, 4: 1820, 5: 1638, 6: 1560 },
+                'watermelon_reg': { 1: 2731, 2: 2521, 4: 2114, 5: 2048, 6: 1771 },
+                'watermelon_blue': { 1: 1285, 2: 1237, 4: 1170, 5: 1170, 6: 1150 },
+                'chance_blue':     { 1: 2341, 2: 2341, 4: 1820, 5: 1638, 6: 1560 }
+            },
+            lamps: {
+                white:  { 1: 32.1, 2: 31.5, 4: 25.8, 5: 23.3, 6: 21.8 },
+                blue:   { 1: 33.2, 2: 33.1, 4: 29.1, 5: 27.5, 6: 26.5 },
+                green:  { 1: 15.6, 2: 16.8, 4: 21.8, 5: 22.5, 6: 23.3 },
+                red:    { 1: 15.4, 2: 14.0, 4: 15.2, 5: 14.8, 6: 14.4 },
+                purple: { 1: 3.7,  2: 4.7,  4: 8.1,  5: 11.9, 6: 13.9 }
+            },
+            screens: {
+                default: { 1: 92.6, 2: 92.6, 4: 85.6, 5: 84.4, 6: 83.1 },
+                highWeak: { 1: 6.2, 2: 6.2, 4: 9.4, 5: 9.4, 6: 9.4 },
+                highStrong: { 1: 1.3, 2: 1.3, 4: 5.0, 5: 6.3, 6: 7.5 }
+            },
+            voices: {
+                default: { 1: 92.0, 2: 91.0, 4: 83.4, 5: 80.0, 6: 79.0 },
+                highWeak: { 1: 6.3, 2: 6.3, 4: 10.0, 5: 12.5, 6: 12.5 },
+                highStrong: { 1: 1.6, 2: 1.6, 4: 5.0, 5: 6.3, 6: 6.3 }
+            }
+        };
+
+        const SMALL_ROLES = {
+            kirameki: { name: 'キラめき目', prob: 20.9 },
+            watermelon: { name: 'スイカ', prob: 95.4 },
+            weakCherry: { name: '弱チェリー', prob: 111.1 },
+            strongCherry: { name: '強チェリー', prob: 240.9 },
+            chance: { name: 'チャンス目', prob: 292.6 },
+            reach: { name: '中段チェリー', prob: 16384.0 }
+        };
+
+        const LABELS = {
+            kirameki_reg: "キラめき目+REG",
+            chance_reg: "チャンス目+REG",
+            watermelon_reg: "スイカ+REG",
+            watermelon_blue: "スイカ+青7",
+            chance_blue: "チャンス目+青7"
+        };
+
+        // --- Calculation Helpers ---
+        // Helper to get effective games based on user input and bonus counts
+        const getEffectiveGames = (games, bonusCount) => {
+            const currentTotal = parseInt(games.currentTotal) || 0;
+            const startTotal = parseInt(games.startTotal) || 0;
+            const currentNormal = parseInt(games.currentNormal) || 0;
+            const startNormal = parseInt(games.startNormal) || 0;
+
+            // Normal Games: Simple subtraction
+            const normal = Math.max(0, currentNormal - startNormal);
+
+            // Total Games (for probability): (Current - Start) - (BonusCount * 40)
+            const rawDiffTotal = Math.max(0, currentTotal - startTotal);
+            const bonusReduction = bonusCount * 40;
+            const total = Math.max(0, rawDiffTotal - bonusReduction);
+
+            return { normal, total, rawDiffTotal };
+        };
+
+        // --- Core Calculation Logic ---
+        const calculateLikelihoods = (state) => {
+            let likelihoods = { 1: 1, 2: 1, 4: 1, 5: 1, 6: 1 };
+            
+            const totalBonusCount = state.counts.bonus.red + state.counts.bonus.blue + state.counts.bonus.reg;
+            const { normal, total } = getEffectiveGames(state.games, totalBonusCount);
+
+            // 1. Game Count (CZ Misses) & CZ Hits
+            // Uses 'normal' games for CZ probability
+            SETTINGS.forEach(s => {
+                const probHit = 1.0 / DATA.cz[s];
+                const probMiss = 1.0 - probHit;
+                
+                // Scaling factor 100 for hits to prevent underflow
+                likelihoods[s] *= Math.pow(probHit * 100, state.counts.cz);
+                likelihoods[s] *= Math.pow(probMiss, normal);
+            });
+
+            // 2. Specific Bonuses
+            Object.keys(state.counts.specificBonus).forEach(key => {
+                const count = state.counts.specificBonus[key];
+                if (count > 0) {
+                    SETTINGS.forEach(s => {
+                        const prob = 1.0 / DATA.specificBonus[key][s];
+                        likelihoods[s] *= Math.pow(prob * 1000, count);
+                    });
+                }
+            });
+
+            // 3. Lamps
+            Object.keys(state.counts.lamps).forEach(key => {
+                const count = state.counts.lamps[key];
+                if (count > 0) {
+                    SETTINGS.forEach(s => {
+                        likelihoods[s] *= Math.pow(DATA.lamps[key][s], count);
+                    });
+                }
+            });
+
+            // 4. Screens (Probabilistic + Hard Filter)
+            Object.keys(state.counts.screens).forEach(key => {
+                const count = state.counts.screens[key];
+                if (count > 0) {
+                    if (key.includes('over2')) likelihoods[1] = 0;
+                    if (key.includes('over4') || key.includes('over456')) { likelihoods[1]=0; likelihoods[2]=0; }
+                    if (key.includes('over5') || key.includes('over99')) { likelihoods[1]=0; likelihoods[2]=0; likelihoods[4]=0; }
+                    if (key.includes('over6') || key.includes('over666')) { likelihoods[1]=0; likelihoods[2]=0; likelihoods[4]=0; likelihoods[5]=0; }
+
+                    if (DATA.screens[key]) {
+                        SETTINGS.forEach(s => {
+                            likelihoods[s] *= Math.pow(DATA.screens[key][s], count);
+                        });
+                    }
+                }
+            });
+
+            // 5. Voices (Probabilistic + Hard Filter)
+            Object.keys(state.counts.voices).forEach(key => {
+                const count = state.counts.voices[key];
+                if (count > 0) {
+                    if (key.includes('over2')) likelihoods[1] = 0;
+                    if (key.includes('over4')) { likelihoods[1]=0; likelihoods[2]=0; }
+                    if (key.includes('over6')) { likelihoods[1]=0; likelihoods[2]=0; likelihoods[4]=0; likelihoods[5]=0; }
+
+                    if (DATA.voices[key]) {
+                        SETTINGS.forEach(s => {
+                            likelihoods[s] *= Math.pow(DATA.voices[key][s], count);
+                        });
+                    }
+                }
+            });
+
+            // 6. Medals (Hard Filter only)
+            Object.keys(state.counts.medals).forEach(key => {
+                if (state.counts.medals[key] > 0) {
+                    if (key.includes('over456')) { likelihoods[1]=0; likelihoods[2]=0; }
+                    if (key.includes('over99')) { likelihoods[1]=0; likelihoods[2]=0; likelihoods[4]=0; }
+                    if (key.includes('over666')) { likelihoods[1]=0; likelihoods[2]=0; likelihoods[4]=0; likelihoods[5]=0; }
+                }
+            });
+
+            // Normalize
+            const sum = Object.values(likelihoods).reduce((a,b)=>a+b, 0);
+            if (sum > 0) {
+                SETTINGS.forEach(s => likelihoods[s] /= sum);
+            }
+            
+            return likelihoods;
+        };
+
+        const getTextColorClass = (key) => {
+            if (key.includes('over2')) return 'text-blue-600 font-bold';
+            if (key.includes('over4')) return 'text-red-600 font-bold';
+            if (key.includes('over5') || key.includes('over99')) return 'text-gold font-bold';
+            if (key.includes('over6')) return 'text-rainbow font-bold';
+            return 'text-slate-700'; 
+        };
+
+        // --- 入力の自動保存（スマホでタブが破棄されても消えない） ---
+        const SAVE = {
+            KEY: "starlight_v1",
+            load() { try { const r = localStorage.getItem(this.KEY); return r ? JSON.parse(r) : null; } catch (_) { return null; } },
+            save(v) { try { localStorage.setItem(this.KEY, JSON.stringify(v)); } catch (_) {} },
+            clear() { try { localStorage.removeItem(this.KEY); } catch (_) {} },
+        };
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('db');
+            const [history, setHistory] = useState([]);
+            const [future, setFuture] = useState([]);
+
+            const [state, setState] = useState({
+                games: { 
+                    startTotal: 0, currentTotal: 0,
+                    startNormal: 0, currentNormal: 0
+                },
+                counts: {
+                    cz: 0, at: 0,
+                    bonus: { red: 0, blue: 0, reg: 0 },
+                    small: { kirameki: 0, watermelon: 0, weakCherry: 0, strongCherry: 0, chance: 0, reach: 0 },
+                    specificBonus: {
+                        kirameki_reg: 0, chance_reg: 0, watermelon_reg: 0, watermelon_blue: 0, chance_blue: 0
+                    },
+                    lamps: { white: 0, blue: 0, green: 0, red: 0, purple: 0 },
+                    screens: { default: 0, highWeak: 0, highStrong: 0, over2: 0, over4: 0, over5: 0, over6: 0 }, 
+                    voices: { default: 0, highWeak: 0, highStrong: 0, over2: 0, over4: 0, over6: 0 },
+                    medals: { over456: 0, over99: 0, over666: 0 }
+                },
+                logs: []
+            });
+            
+            const likelihoods = useMemo(() => calculateLikelihoods(state), [state]);
+
+            const totalBonusCount = state.counts.bonus.red + state.counts.bonus.blue + state.counts.bonus.reg;
+            const { normal: calcNormalGames, total: calcTotalGames, rawDiffTotal } = getEffectiveGames(state.games, totalBonusCount);
+
+            const [modal, setModal] = useState(null); 
+            const [importText, setImportText] = useState("");
+            
+            const [sbRole, setSbRole] = useState(null);
+            const [sbType, setSbType] = useState(null);
+
+            // --- 自動保存: 起動時に復元 → 以降は変更のたび保存 ---
+            const [restored, setRestored] = useState(false);
+            useEffect(() => {
+                const d = SAVE.load();
+                if (d) {
+                    if (d.state) setState(d.state);
+                    if (d.activeTab) setActiveTab(d.activeTab);
+                    if (Array.isArray(d.history)) setHistory(d.history);
+                }
+                setRestored(true);
+            }, []);
+            useEffect(() => {
+                if (!restored) return;
+                SAVE.save({ state, activeTab, history: history.slice(-30) });
+            }, [restored, state, activeTab, history]);
+
+            const pushState = (newState, logMsg = null) => {
+                const logEntry = logMsg ? { text: logMsg, time: new Date().toLocaleTimeString() } : null;
+                const nextState = logEntry ? { ...newState, logs: [logEntry, ...newState.logs] } : newState;
+                setHistory(prev => [...prev, state]);
+                setState(nextState);
+                setFuture([]);
+            };
+
+            const undo = () => {
+                if (history.length === 0) return;
+                const prev = history[history.length - 1];
+                setFuture(prev => [state, ...prev]);
+                setState(prev);
+                setHistory(prev => prev.slice(0, -1));
+            };
+
+            const redo = () => {
+                if (future.length === 0) return;
+                const next = future[0];
+                setHistory(prev => [...prev, state]);
+                setState(next);
+                setFuture(prev => prev.slice(1));
+            };
+
+            const changeGames = (key, value) => {
+                const numVal = value === '' ? '' : parseInt(value); 
+                const newState = { 
+                    ...state, 
+                    games: { ...state.games, [key]: numVal }
+                };
+                setState(newState); 
+            };
+
+            const updateSmallRole = (role, delta) => {
+                const newState = { 
+                    ...state, 
+                    counts: { 
+                        ...state.counts, 
+                        small: { ...state.counts.small, [role]: Math.max(0, state.counts.small[role] + delta) } 
+                    }
+                };
+                pushState(newState, delta > 0 ? `小役: ${SMALL_ROLES[role].name}` : null);
+            };
+
+            const recordCZ = () => {
+                const newState = { ...state, counts: { ...state.counts, cz: state.counts.cz + 1 } };
+                pushState(newState, "Challenge Revue当選");
+            };
+
+            const recordAT = () => {
+                const newState = { ...state, counts: { ...state.counts, at: state.counts.at + 1 } };
+                pushState(newState, "AT当選");
+            };
+
+            const handleBonusSubmit = () => {
+                if (!sbRole || !sbType) return;
+                
+                let logText = "";
+                let newState = { ...state };
+                
+                if (sbType === 'red') newState.counts.bonus.red++;
+                else if (sbType === 'blue') newState.counts.bonus.blue++;
+                else if (sbType === 'reg') newState.counts.bonus.reg++;
+
+                const roleName = SMALL_ROLES[sbRole]?.name || sbRole;
+                const typeName = sbType === 'red' ? '赤7' : sbType === 'blue' ? '青7' : 'REG';
+                logText = `${roleName}+${typeName}`;
+
+                let key = "";
+                if (sbRole === 'kirameki' && sbType === 'reg') key = 'kirameki_reg';
+                else if (sbRole === 'chance' && sbType === 'reg') key = 'chance_reg';
+                else if (sbRole === 'watermelon' && sbType === 'reg') key = 'watermelon_reg';
+                else if (sbRole === 'watermelon' && sbType === 'blue') key = 'watermelon_blue';
+                else if (sbRole === 'chance' && sbType === 'blue') key = 'chance_blue';
+
+                if (key) {
+                    newState.counts.specificBonus[key] = (newState.counts.specificBonus[key] || 0) + 1;
+                    logText += " (特定)";
+                }
+
+                pushState(newState, logText);
+                setSbRole(null);
+                setSbType(null);
+                setModal(null);
+            };
+
+            const updateLamp = (color, delta) => {
+                const currentCount = state.counts.lamps[color];
+                if (delta < 0 && currentCount <= 0) return;
+
+                const newState = { 
+                    ...state, 
+                    counts: { 
+                        ...state.counts, 
+                        lamps: { 
+                            ...state.counts.lamps, 
+                            [color]: Math.max(0, currentCount + delta) 
+                        } 
+                    } 
+                };
+                
+                // Only log if adding, similar to small roles
+                const lampNames = { white:'白', blue:'青', green:'緑', red:'赤', purple:'紫' };
+                const logText = delta > 0 ? `ランプ: ${lampNames[color]}` : null;
+                
+                pushState(newState, logText);
+            };
+
+            const recordScreen = (type, category) => {
+                const newState = { ...state, counts: { ...state.counts, [category]: { ...state.counts[category], [type]: state.counts[category][type] + 1 } } };
+                pushState(newState, `示唆: ${type}`);
+                setModal(null);
+            };
+            
+            const resetAll = () => {
+                if (confirm("全てのデータをリセットしますか？")) {
+                    setState({
+                        games: { startTotal: 0, currentTotal: 0, startNormal: 0, currentNormal: 0 },
+                        counts: {
+                            cz: 0, at: 0,
+                            bonus: { red: 0, blue: 0, reg: 0 },
+                            small: { kirameki: 0, watermelon: 0, weakCherry: 0, strongCherry: 0, chance: 0, reach: 0 },
+                            specificBonus: { kirameki_reg: 0, chance_reg: 0, watermelon_reg: 0, watermelon_blue: 0, chance_blue: 0 },
+                            lamps: { white: 0, blue: 0, green: 0, red: 0, purple: 0 },
+                            screens: { default: 0, highWeak: 0, highStrong: 0, over2: 0, over4: 0, over5: 0, over6: 0 },
+                            voices: { default: 0, highWeak: 0, highStrong: 0, over2: 0, over4: 0, over6: 0 },
+                            medals: { over456: 0, over99: 0, over666: 0 }
+                        },
+                        logs: []
+                    });
+                    setHistory([]);
+                    setFuture([]);
+                }
+            };
+            
+            const copyData = () => {
+                navigator.clipboard.writeText(JSON.stringify(state)).then(() => alert("コピーしました"));
+            };
+            const pasteData = () => {
+                try {
+                    const data = JSON.parse(importText);
+                    if (data.games) {
+                        if (typeof data.games.total !== 'undefined') {
+                            data.games = {
+                                startTotal: 0, currentTotal: data.games.total,
+                                startNormal: 0, currentNormal: data.games.normal
+                            };
+                        }
+                        setState(data);
+                        setHistory([]);
+                        setModal(null);
+                        alert("読み込みました");
+                    }
+                } catch(e) { alert("データ形式が正しくありません"); }
+            };
+
+            const PercentageBar = () => {
+                const total = Object.values(likelihoods).reduce((a,b)=>a+b, 0);
+                const maxVal = Math.max(...Object.values(likelihoods));
+                
+                return (
+                    <div className="space-y-2 mt-4">
+                        {SETTINGS.map(s => {
+                            const val = likelihoods[s];
+                            const pct = total > 0 ? (val / total) * 100 : 0;
+                            const isTop = val === maxVal && val > 0;
+                            return (
+                                <div key={s} className="flex items-center text-xs">
+                                    <span className={`w-12 font-bold ${isTop ? 'text-starlight' : 'text-gray-400'}`}>設定{s}</span>
+                                    <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden mx-2">
+                                        <div className={`h-full transition-all duration-500 ${isTop ? 'bg-starlight' : 'bg-gray-400'}`} style={{ width: `${pct}%` }}></div>
+                                    </div>
+                                    <span className="w-10 text-right">{pct.toFixed(1)}%</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+            };
+
+            const ScreenStats = ({ title, data, labels, baseKeys }) => {
+                const total = Object.values(data).reduce((a, b) => a + b, 0);
+                const baseTotal = baseKeys ? baseKeys.reduce((acc, k) => acc + (data[k]||0), 0) : 0;
+                
+                const calcProb = (count, denominator) => denominator > 0 ? ((count / denominator) * 100).toFixed(1) : '-';
+
+                return (
+                    <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 mb-4">
+                        <h3 className="font-bold text-gray-600 mb-3 text-sm">{title}</h3>
+                        <table className="w-full text-xs text-center">
+                            <thead className="bg-rose-50 text-rose-800">
+                                <tr>
+                                    <th className="py-2 align-middle">示唆内容</th>
+                                    <th className="py-2 align-middle">回数</th>
+                                    <th className="py-2 align-middle">割合</th>
+                                    <th className="py-2 align-middle leading-tight">割合<br/><span className="text-[10px] font-normal opacity-90">(確定系除く)</span></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {Object.keys(data).map(key => {
+                                    const count = data[key];
+                                    const isBase = baseKeys && baseKeys.includes(key);
+                                    return (
+                                        <tr key={key}>
+                                            <td className={`py-2 ${getTextColorClass(key)}`}>{labels[key] || key}</td>
+                                            <td>{count}</td>
+                                            <td className="font-bold">{calcProb(count, total)}%</td>
+                                            <td className={`font-bold ${isBase ? 'text-starlight' : 'text-gray-300'}`}>
+                                                {isBase ? `${calcProb(count, baseTotal)}%` : '-'}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                <tr className="bg-rose-50/30 font-bold">
+                                    <td className="py-2">合計</td>
+                                    <td>{total}</td>
+                                    <td>100%</td>
+                                    <td>-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                );
+            };
+
+            const BonusStats = () => {
+                const { bonus } = state.counts;
+                const totalBonus = bonus.red + bonus.blue + bonus.reg;
+                
+                const calcProb = (count) => count > 0 ? (calcTotalGames / count).toFixed(0) : '-';
+
+                return (
+                    <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 mb-4">
+                        <h3 className="font-bold text-gray-600 mb-3 text-sm">ボーナス確率詳細</h3>
+                        <div className="text-[10px] text-gray-400 mb-2 text-right">
+                            有効総G数: {calcTotalGames}G (ボナ×40除外)
+                        </div>
+                        <table className="w-full text-xs text-center">
+                            <thead className="bg-rose-50 text-rose-800">
+                                <tr><th>項目</th><th>回数</th><th>確率</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                <tr>
+                                    <td className="py-2">赤7 BB</td>
+                                    <td>{bonus.red}</td>
+                                    <td className="font-bold">1/{calcProb(bonus.red)}</td>
+                                </tr>
+                                <tr>
+                                    <td className="py-2">青7 BB</td>
+                                    <td>{bonus.blue}</td>
+                                    <td className="font-bold">1/{calcProb(bonus.blue)}</td>
+                                </tr>
+                                <tr>
+                                    <td className="py-2">REG</td>
+                                    <td>{bonus.reg}</td>
+                                    <td className="font-bold">1/{calcProb(bonus.reg)}</td>
+                                </tr>
+                                <tr className="bg-rose-50/50">
+                                    <td className="py-2 font-bold text-starlight">ボーナス合算</td>
+                                    <td className="font-bold">{totalBonus}</td>
+                                    <td className="font-bold text-starlight">1/{calcProb(totalBonus)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                )
+            };
+
+            const SpecificBonusStats = () => {
+                const { specificBonus } = state.counts;
+                
+                const calcProb = (count) => count > 0 ? (calcTotalGames / count).toFixed(0) : '-';
+
+                return (
+                    <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 mb-4">
+                        <h3 className="font-bold text-gray-600 mb-3 text-sm">特定ボーナス確率</h3>
+                        <table className="w-full text-xs text-center">
+                            <thead className="bg-rose-50 text-rose-800">
+                                <tr><th>項目</th><th>回数</th><th>確率</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {Object.keys(specificBonus).map(key => (
+                                    <tr key={key}>
+                                        <td className="py-2">{LABELS[key]}</td>
+                                        <td>{specificBonus[key]}</td>
+                                        <td className="font-bold">1/{calcProb(specificBonus[key])}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )
+            };
+
+            const totalScreens = Object.values(state.counts.screens).reduce((a,b)=>a+b,0);
+            const totalVoices = Object.values(state.counts.voices).reduce((a,b)=>a+b,0);
+            const totalMedals = Object.values(state.counts.medals).reduce((a,b)=>a+b,0);
+            
+            const screenLabels = {
+                default: 'デフォルト', highWeak: '高設定 弱', highStrong: '高設定 強',
+                over2: '設定2以上', over4: '設定4以上', over5: '設定5以上', over6: '設定6確定',
+                over456: '456確', over99: '5以上', over666: '6確'
+            };
+            const voiceLabels = {
+                default: 'デフォルト', highWeak: '高設定 弱', highStrong: '高設定 強',
+                over2: '設定2以上', over4: '設定4以上', over6: '設定6確定'
+            };
+            
+            const baseScreenKeys = ['default', 'highWeak', 'highStrong'];
+            const baseVoiceKeys = ['default', 'highWeak', 'highStrong'];
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen pb-20 bg-rose-50 text-slate-700">
+                    <div className="glass sticky top-0 z-40 px-4 py-3 shadow-sm">
+                        <div className="flex justify-between items-center mb-2">
+                            <h1 className="font-bold text-lg text-starlight tracking-tight">Lスタァライト 設定判別</h1>
+                            <div className="flex gap-2">
+                                <button onClick={undo} disabled={history.length===0} className="btn-base p-2 bg-white rounded-lg shadow-sm text-xs disabled:opacity-50">↩</button>
+                                <button onClick={redo} disabled={future.length===0} className="btn-base p-2 bg-white rounded-lg shadow-sm text-xs disabled:opacity-50">↪</button>
+                                <button onClick={() => setModal('save')} className="btn-base p-2 bg-white rounded-lg shadow-sm text-xs">💾</button>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 text-xs text-center bg-white/60 p-2 rounded-lg border border-rose-100">
+                            <div className="flex-1">
+                                <div className="text-gray-400 text-[10px]">ボーナス確率</div>
+                                <div className="font-mono font-bold text-slate-700">1/{totalBonusCount > 0 ? (calcTotalGames / totalBonusCount).toFixed(0) : '-'}</div>
+                            </div>
+                            <div className="w-px bg-rose-200"></div>
+                            <div className="flex-1">
+                                <div className="text-gray-400 text-[10px]">CZ確率</div>
+                                <div className="font-mono font-bold text-starlight">1/{state.counts.cz ? (calcNormalGames/state.counts.cz).toFixed(0) : '-'}</div>
+                            </div>
+                            <div className="w-px bg-rose-200"></div>
+                            <div className="flex-1">
+                                <div className="text-gray-400 text-[10px]">AT確率</div>
+                                <div className="font-mono font-bold text-slate-700">1/{state.counts.at ? (rawDiffTotal/state.counts.at).toFixed(0) : '-'}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 space-y-6">
+                        {activeTab === 'main' && (
+                            <>
+                                <div className="bg-white rounded-xl shadow-sm border border-rose-100 p-3">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h2 className="text-xs font-bold text-gray-500">ゲーム数入力</h2>
+                                        <span className="text-[10px] text-gray-400">現在 - 開始 = 実質G数</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 mb-2">
+                                        <div className="text-center">
+                                            <div className="text-[10px] font-bold text-slate-500 mb-1">総ゲーム</div>
+                                            <div className="grid grid-cols-2 gap-1">
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] text-gray-400 block">開始</span>
+                                                    <input 
+                                                        type="number" 
+                                                        className="w-full text-center font-bold text-sm bg-slate-50 border border-slate-200 rounded py-1"
+                                                        value={state.games.startTotal || ''} 
+                                                        placeholder="0"
+                                                        onChange={(e) => changeGames('startTotal', e.target.value)} 
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] text-gray-400 block">現在</span>
+                                                    <input 
+                                                        type="number" 
+                                                        className="w-full text-center font-bold text-sm bg-white border border-slate-300 rounded py-1"
+                                                        value={state.games.currentTotal || ''} 
+                                                        placeholder="0"
+                                                        onChange={(e) => changeGames('currentTotal', e.target.value)} 
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="mt-1 text-[10px] text-slate-400">
+                                                有効: <span className="font-bold text-slate-600">{calcTotalGames}G</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="text-center">
+                                            <div className="text-[10px] font-bold text-rose-500 mb-1">通常ゲーム</div>
+                                            <div className="grid grid-cols-2 gap-1">
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] text-rose-300 block">開始</span>
+                                                    <input 
+                                                        type="number" 
+                                                        className="w-full text-center font-bold text-sm bg-rose-50 border border-rose-200 text-rose-800 rounded py-1"
+                                                        value={state.games.startNormal || ''} 
+                                                        placeholder="0"
+                                                        onChange={(e) => changeGames('startNormal', e.target.value)} 
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] text-rose-300 block">現在</span>
+                                                    <input 
+                                                        type="number" 
+                                                        className="w-full text-center font-bold text-sm bg-white border border-rose-300 text-rose-600 rounded py-1"
+                                                        value={state.games.currentNormal || ''} 
+                                                        placeholder="0"
+                                                        onChange={(e) => changeGames('currentNormal', e.target.value)} 
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="mt-1 text-[10px] text-rose-400">
+                                                有効: <span className="font-bold text-rose-600">{calcNormalGames}G</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-[9px] text-gray-400 text-center">
+                                        ※有効総G数 = (現在-開始) - (ボナ回数×平均40G)
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <button onClick={() => setModal('bonus')} className="btn-base w-full h-20 bg-white border-2 border-starlight text-starlight rounded-xl shadow-lg shadow-rose-100 flex flex-col items-center justify-center relative overflow-hidden group">
+                                        <div className="absolute inset-0 bg-rose-50 opacity-0 group-active:opacity-100 transition-opacity"></div>
+                                        <span className="font-bold text-2xl relative z-10">ボーナス当選</span>
+                                    </button>
+                                    
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={recordCZ} className="btn-base h-16 bg-gradient-to-br from-rose-500 to-red-600 text-white rounded-xl shadow-md flex flex-col items-center justify-center">
+                                            <span className="font-bold text-lg block">CZ 当選</span>
+                                            <span className="text-[10px] opacity-80">Challenge Revue</span>
+                                        </button>
+                                        <button onClick={recordAT} className="btn-base h-16 bg-gradient-to-br from-yellow-50 to-amber-100 border border-amber-200 text-amber-600 rounded-xl shadow-sm flex flex-col items-center justify-center">
+                                            <span className="font-bold text-lg">AT 当選</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-3">
+                                    <h2 className="text-xs font-bold text-gray-500 mb-3">小役カウンター (メモ用)</h2>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            { k: 'kirameki', l: 'キラめき目', c: 'text-yellow-500' },
+                                            { k: 'watermelon', l: 'スイカ', c: 'text-green-500' },
+                                            { k: 'chance', l: 'チャンス目', c: 'text-purple-500' },
+                                            { k: 'weakCherry', l: '弱チェリー', c: 'text-red-400' },
+                                            { k: 'strongCherry', l: '強チェリー', c: 'text-red-600' },
+                                            { k: 'reach', l: '中段チェリー', c: 'text-starlight' }
+                                        ].map((role) => (
+                                            <div key={role.k} className="relative group">
+                                                <button onClick={() => updateSmallRole(role.k, 1)} className="btn-base w-full bg-slate-50 border border-slate-100 rounded-lg p-2 flex flex-col items-center active:bg-slate-100 h-full">
+                                                    <span className={`text-[10px] font-bold ${role.c}`}>{role.l}</span>
+                                                    <div className="flex items-baseline gap-1 mt-1">
+                                                        <span className="text-sm font-bold text-slate-700">{state.counts.small[role.k]}</span>
+                                                        <span className="text-[9px] text-gray-400">
+                                                            1/{state.counts.small[role.k] ? (calcTotalGames/state.counts.small[role.k]).toFixed(0) : '-'}
+                                                        </span>
+                                                    </div>
+                                                </button>
+                                                <button onClick={() => updateSmallRole(role.k, -1)} className="absolute bottom-1 left-1 w-5 h-5 flex items-center justify-center bg-slate-200 text-slate-500 rounded-full text-[10px] opacity-50 hover:opacity-100 z-20">-</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-3">
+                                    <h2 className="text-xs font-bold text-gray-500 mb-3">CZ/フェイク前兆終了時ランプ</h2>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { k: 'white', bg: 'bg-gray-100', border: 'border-gray-300', text: 'text-gray-600', l: '白' },
+                                            { k: 'blue', bg: 'bg-blue-100', border: 'border-blue-300', text: 'text-blue-600', l: '青' },
+                                            { k: 'green', bg: 'bg-green-100', border: 'border-green-300', text: 'text-green-600', l: '緑' },
+                                            { k: 'red', bg: 'bg-red-100', border: 'border-red-300', text: 'text-red-600', l: '赤' },
+                                            { k: 'purple', bg: 'bg-purple-100', border: 'border-purple-300', text: 'text-purple-600', l: '紫' },
+                                        ].map(c => (
+                                            <div key={c.k} className="relative group flex-1">
+                                                <button onClick={() => updateLamp(c.k, 1)} className={`btn-base w-full py-2 rounded-lg border ${c.bg} ${c.border} ${c.text} text-xs font-bold flex flex-col items-center h-full active:opacity-75`}>
+                                                    <span>{c.l}</span>
+                                                    <span className="text-[10px] mt-0.5">{state.counts.lamps[c.k]}</span>
+                                                </button>
+                                                <button onClick={() => updateLamp(c.k, -1)} className="absolute bottom-1 left-1 w-3 h-3 flex items-center justify-center bg-slate-400/20 text-slate-500 rounded-full text-[8px] opacity-50 hover:opacity-100 z-20">-</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <button onClick={() => setModal('screen')} className="btn-base w-full py-3 bg-white border border-rose-200 text-rose-600 rounded-xl shadow-sm font-bold text-sm flex justify-between px-4 items-center">
+                                    <span>終了画面・ボイス・枚数示唆 入力</span>
+                                    <span className="text-xs bg-rose-100 px-2 py-0.5 rounded-full">
+                                        画面:{totalScreens} ボイス:{totalVoices} 枚数:{totalMedals}
+                                    </span>
+                                </button>
+                            </>
+                        )}
+
+                        {activeTab === 'counter' && (
+                            <div className="space-y-4">
+                                <div className="bg-white rounded-xl p-4 shadow-sm">
+                                    <h2 className="text-center font-bold text-slate-700 mb-4">設定推測結果</h2>
+                                    <PercentageBar />
+                                    <div className="mt-4 text-[10px] text-gray-400 text-center">
+                                        CZ確率・特定ボーナス・ランプ分布・終了画面等の入力値から<br/>ベイズ推定を用いて算出しています。
+                                    </div>
+                                </div>
+
+                                <BonusStats />
+                                <SpecificBonusStats />
+
+                                <ScreenStats title="BB終了画面示唆割合" data={state.counts.screens} labels={screenLabels} baseKeys={baseScreenKeys} />
+                                <ScreenStats title="AT終了時ボイス割合" data={state.counts.voices} labels={voiceLabels} baseKeys={baseVoiceKeys} />
+
+                                <div className="bg-white rounded-xl p-4 shadow-sm">
+                                    <h2 className="text-xs font-bold text-gray-500 mb-2">履歴</h2>
+                                    <div className="space-y-1 h-64 overflow-y-auto">
+                                        {state.logs.map((l, i) => (
+                                            <div key={i} className="text-xs flex justify-between border-b border-slate-50 py-1">
+                                                <span>{l.text}</span>
+                                                <span className="text-gray-300">{l.time}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button onClick={resetAll} className="w-full py-3 text-red-500 bg-red-50 rounded-xl text-xs font-bold">全データリセット</button>
+                            </div>
+                        )}
+
+                        {activeTab === 'db' && (
+                            <div className="space-y-4 text-xs">
+                                <div className="bg-white p-3 rounded-xl shadow-sm">
+                                    <h3 className="font-bold text-starlight mb-2">CZ・AT確率</h3>
+                                    <table className="w-full text-center">
+                                        <thead className="bg-rose-50 text-rose-800"><tr><th>設定</th><th>CZ</th><th>AT</th></tr></thead>
+                                        <tbody>
+                                            {SETTINGS.map(s => (
+                                                <tr key={s} className="border-b border-slate-100">
+                                                    <td className="font-bold py-1">{s}</td>
+                                                    <td>1/{DATA.cz[s]}</td>
+                                                    <td>1/{DATA.at[s]}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="bg-white p-3 rounded-xl shadow-sm">
+                                    <h3 className="font-bold text-starlight mb-2">ボーナス確率</h3>
+                                    <table className="w-full text-center">
+                                        <thead className="bg-rose-50 text-rose-800"><tr><th>設定</th><th>RB</th><th>BB</th><th>合算</th></tr></thead>
+                                        <tbody>
+                                            {SETTINGS.map(s => (
+                                                <tr key={s} className="border-b border-slate-100">
+                                                    <td className="font-bold py-1">{s}</td>
+                                                    <td>1/{DATA.bonusProb.rb[s]}</td>
+                                                    <td>1/{DATA.bonusProb.bb[s]}</td>
+                                                    <td className="font-bold">1/{DATA.bonusProb.total[s]}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="bg-white p-3 rounded-xl shadow-sm">
+                                    <h3 className="font-bold text-starlight mb-2">特定ボーナス</h3>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-center whitespace-nowrap">
+                                            <thead className="bg-rose-50 text-rose-800">
+                                                <tr><th>設定</th><th>キラめき<br/>REG</th><th>チャンス<br/>REG</th><th>スイカ<br/>REG</th><th>スイカ<br/>青7</th><th>チャンス<br/>青7</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                {SETTINGS.map(s => (
+                                                    <tr key={s} className="border-b border-slate-100">
+                                                        <td className="font-bold py-1">{s}</td>
+                                                        <td>1/{DATA.specificBonus.kirameki_reg[s]}</td>
+                                                        <td>1/{DATA.specificBonus.chance_reg[s]}</td>
+                                                        <td>1/{DATA.specificBonus.watermelon_reg[s]}</td>
+                                                        <td>1/{DATA.specificBonus.watermelon_blue[s]}</td>
+                                                        <td>1/{DATA.specificBonus.chance_blue[s]}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-3 rounded-xl shadow-sm">
+                                    <h3 className="font-bold text-starlight mb-2">小役確率（設定1）</h3>
+                                    <table className="w-full text-center">
+                                        <thead className="bg-rose-50 text-rose-800"><tr><th>小役</th><th>確率</th></tr></thead>
+                                        <tbody>
+                                            {Object.values(SMALL_ROLES).map((role, i) => (
+                                                <tr key={i} className="border-b border-slate-100">
+                                                    <td className="py-1">{role.name}</td>
+                                                    <td>1/{role.prob}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="bg-white p-3 rounded-xl shadow-sm">
+                                    <h3 className="font-bold text-starlight mb-2">CZ/フェイク前兆終了時ランプ振り分け</h3>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-center whitespace-nowrap">
+                                            <thead className="bg-rose-50 text-rose-800">
+                                                <tr><th>設定</th><th>白</th><th>青</th><th>緑</th><th>赤</th><th>紫</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                {SETTINGS.map(s => (
+                                                    <tr key={s} className="border-b border-slate-100">
+                                                        <td className="font-bold py-1">{s}</td>
+                                                        <td>{DATA.lamps.white[s]}%</td>
+                                                        <td>{DATA.lamps.blue[s]}%</td>
+                                                        <td>{DATA.lamps.green[s]}%</td>
+                                                        <td>{DATA.lamps.red[s]}%</td>
+                                                        <td>{DATA.lamps.purple[s]}%</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-3 rounded-xl shadow-sm">
+                                    <h3 className="font-bold text-starlight mb-2">終了画面示唆 (BB)</h3>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <h4 className="font-bold text-[10px] text-slate-600 mb-1">高設定示唆（弱）</h4>
+                                                <img src="screen_high_weak.jpg" alt="高設定示唆(弱)" className="rounded-lg w-full shadow-sm" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-bold text-[10px] text-slate-600 mb-1">高設定示唆（強）</h4>
+                                                <img src="screen_high_strong.jpg" alt="高設定示唆(強)" className="rounded-lg w-full shadow-sm" />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <span className="text-[10px] font-bold text-blue-600 block mb-1">設定2以上</span>
+                                                <img src="screen_over2.jpg" alt="設定2以上" className="rounded w-full shadow-sm" />
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-bold text-red-600 block mb-1">設定4以上</span>
+                                                <img src="screen_over4.jpg" alt="設定4以上" className="rounded w-full shadow-sm" />
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-bold text-gold block mb-1">設定5以上</span>
+                                                <img src="screen_over5.jpg" alt="設定5以上" className="rounded w-full shadow-sm" />
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-bold text-rainbow block mb-1">設定6確定</span>
+                                                <img src="screen_over6.jpg" alt="設定6確定" className="rounded w-full shadow-sm" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <table className="w-full text-center text-xs mt-4">
+                                        <thead className="bg-rose-50 text-rose-800">
+                                            <tr><th>設定</th><th>デフォ</th><th>高(弱)</th><th>高(強)</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            {SETTINGS.map(s => (
+                                                <tr key={s} className="border-b border-slate-100">
+                                                    <td className="font-bold py-1">{s}</td>
+                                                    <td>{DATA.screens.default[s]}%</td>
+                                                    <td>{DATA.screens.highWeak[s]}%</td>
+                                                    <td>{DATA.screens.highStrong[s]}%</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="bg-white p-3 rounded-xl shadow-sm">
+                                    <h3 className="font-bold text-starlight mb-2">AT終了時ボイス一覧</h3>
+                                    <div className="mb-3 text-xs text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 overflow-x-auto">
+                                        <div className="space-y-1 whitespace-nowrap">
+                                            <p><span className="font-bold">デフォルト:</span> オーディション終了します</p>
+                                            <p><span className="font-bold text-slate-600">高設定(弱):</span> そこまでキラめきが残るなんて予測できませんでした</p>
+                                            <p><span className="font-bold text-slate-600">高設定(強):</span> トップスタァになったあなたが望む「運命の舞台」とは？</p>
+                                            <p><span className="font-bold text-blue-600">設定2以上:</span> あなたにもあるでしょう？眩しい舞台が</p>
+                                            <p><span className="font-bold text-red-600">設定4以上:</span> 運命の二人…ですか。わかります。</p>
+                                            <p><span className="font-bold text-rainbow">設定6確定:</span> これこそ私が観たかった舞台わかります！</p>
+                                        </div>
+                                    </div>
+                                    <table className="w-full text-center text-xs">
+                                        <thead className="bg-rose-50 text-rose-800">
+                                            <tr><th>設定</th><th>デフォ</th><th>高(弱)</th><th>高(強)</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            {SETTINGS.map(s => (
+                                                <tr key={s} className="border-b border-slate-100">
+                                                    <td className="font-bold py-1">{s}</td>
+                                                    <td>{DATA.voices.default[s]}%</td>
+                                                    <td>{DATA.voices.highWeak[s]}%</td>
+                                                    <td>{DATA.voices.highStrong[s]}%</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {modal === 'bonus' && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
+                            <div className="bg-white rounded-xl p-4 w-full max-w-sm space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                                <h3 className="text-center font-bold text-starlight">ボーナス当選登録</h3>
+                                
+                                <div>
+                                    <div className="text-xs font-bold text-gray-500 mb-2">成立役</div>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            {k:'kirameki',l:'キラめき目'},{k:'watermelon',l:'スイカ'},{k:'chance',l:'チャンス目'},
+                                            {k:'weakCherry',l:'弱チェリー'},{k:'strongCherry',l:'強チェリー'},{k:'reach',l:'中段チェリー'}
+                                        ].map(r => (
+                                            <button key={r.k} onClick={() => setSbRole(r.k)} className={`py-2 border rounded-lg text-xs font-bold ${sbRole===r.k ? 'bg-starlight text-white border-starlight' : 'bg-white text-gray-600 border-gray-200'}`}>{r.l}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="text-xs font-bold text-gray-500 mb-2">ボーナス種別</div>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[{k:'red',l:'赤7'},{k:'blue',l:'青7'},{k:'reg',l:'REG'}].map(t => (
+                                            <button key={t.k} onClick={() => setSbType(t.k)} className={`py-2 border rounded-lg text-xs font-bold ${sbType===t.k ? 'bg-starlight text-white border-starlight' : 'bg-white text-gray-600 border-gray-200'}`}>{t.l}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <button onClick={handleBonusSubmit} disabled={!sbRole || !sbType} className="w-full py-3 bg-starlight text-white rounded-lg font-bold disabled:opacity-50">登録</button>
+                                <button onClick={() => setModal(null)} className="w-full py-2 text-gray-400 text-xs">閉じる</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {modal === 'screen' && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
+                            <div className="bg-white rounded-xl p-4 w-full max-w-sm space-y-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                                <div>
+                                    <h3 className="text-xs font-bold text-gray-400 mb-2">BB終了画面</h3>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            {k:'default',l:'デフォルト',c:'bg-slate-50'},
+                                            {k:'highWeak',l:'高設定 弱',c:'bg-slate-50 text-slate-700'},
+                                            {k:'highStrong',l:'高設定 強',c:'bg-slate-50 text-slate-700'},
+                                            {k:'over2',l:'設定2以上',c:'bg-blue-50 text-blue-600'},
+                                            {k:'over4',l:'設定4以上',c:'bg-red-50 text-red-600'},
+                                            {k:'over5',l:'設定5以上',c:'bg-amber-50 text-gold'},
+                                            {k:'over6',l:'設定6確定',c:'bg-slate-50 text-rainbow font-bold'}
+                                        ].map(b => (
+                                            <button key={b.k} onClick={() => recordScreen(b.k, 'screens')} className={`btn-base py-2 border rounded text-xs flex flex-col items-center ${b.c} ${b.k.startsWith('over') ? 'font-bold' : ''}`}>
+                                                <span>{b.l}</span>
+                                                <span className="text-[10px] font-bold mt-1">({state.counts.screens[b.k]})</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="text-xs font-bold text-gray-400 mb-2">AT終了時ボイス</h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                            {k:'default',l:'デフォルト',c:'bg-slate-50'},
+                                            {k:'highWeak',l:'高設定 弱',c:'bg-slate-50 text-slate-700'},
+                                            {k:'highStrong',l:'高設定 強',c:'bg-slate-50 text-slate-700'},
+                                            {k:'over2',l:'設定2以上',c:'bg-blue-50 text-blue-600'},
+                                            {k:'over4',l:'設定4以上',c:'bg-red-50 text-red-600'},
+                                            {k:'over6',l:'設定6確定',c:'bg-slate-50 text-rainbow font-bold'}
+                                        ].map(b => (
+                                            <button key={b.k} onClick={() => recordScreen(b.k, 'voices')} className={`btn-base py-2 border rounded text-xs flex flex-col items-center ${b.c}`}>
+                                                <span>{b.l}</span>
+                                                <span className="text-[10px] font-bold mt-1">({state.counts.voices[b.k]})</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="text-xs font-bold text-gray-400 mb-2">枚数表示</h3>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            {k:'over456',l:'456 OVER',c:'bg-red-50 text-red-600'},
+                                            {k:'over99',l:'99 OVER',c:'bg-amber-50 text-gold'},
+                                            {k:'over666',l:'666 OVER',c:'bg-slate-50 text-rainbow font-bold'}
+                                        ].map(b => (
+                                            <button key={b.k} onClick={() => recordScreen(b.k, 'medals')} className={`btn-base py-2 border rounded text-xs flex flex-col items-center ${b.c}`}>
+                                                <span>{b.l}</span>
+                                                <span className="text-[10px] font-bold mt-1">({state.counts.medals[b.k]})</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button onClick={() => setModal(null)} className="w-full py-2 text-gray-400 text-xs">閉じる</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {modal === 'save' && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
+                            <div className="bg-white rounded-xl p-4 w-full max-w-sm space-y-3" onClick={e => e.stopPropagation()}>
+                                <h3 className="text-center font-bold text-gray-700">データ保存・読込</h3>
+                                <button onClick={copyData} className="btn-base w-full py-3 bg-starlight text-white rounded-lg font-bold">クリップボードにコピー</button>
+                                <textarea 
+                                    className="w-full h-20 p-2 border rounded-lg text-xs bg-slate-50" 
+                                    placeholder="ここにデータを貼り付け"
+                                    value={importText}
+                                    onChange={e => setImportText(e.target.value)}
+                                />
+                                <button onClick={pasteData} className="btn-base w-full py-3 bg-slate-700 text-white rounded-lg font-bold">読み込み</button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-rose-100 flex justify-around py-3 z-40 text-[10px] font-bold text-gray-400">
+                        <button onClick={() => setActiveTab('db')} className={`flex flex-col items-center ${activeTab === 'db' ? 'text-starlight' : ''}`}>
+                            <span className="text-lg">📚</span>
+                            <span>データベース</span>
+                        </button>
+                        <button onClick={() => setActiveTab('main')} className={`flex flex-col items-center ${activeTab === 'main' ? 'text-starlight' : ''}`}>
+                            <span className="text-lg">📝</span>
+                            <span>記録</span>
+                        </button>
+                        <button onClick={() => setActiveTab('counter')} className={`flex flex-col items-center ${activeTab === 'counter' ? 'text-starlight' : ''}`}>
+                            <span className="text-lg">📊</span>
+                            <span>判別・分析</span>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

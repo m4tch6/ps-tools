@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ガルパン最終章 設定判別ツール</title>
+<link rel="manifest" href="../manifest.webmanifest">
+    
+    <!-- ファビコンとスマホ用アイコンの設定 -->
+    <link rel="icon" type="image/png" href="image.png">
+    <link rel="apple-touch-icon" href="image.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { background-color: #f8fafc; color: #1e293b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        .btn-base { transition: all 0.1s ease-out; touch-action: manipulation; user-select: none; position: relative; z-index: 10; }
+        .btn-base:active:not(:disabled) { transform: scale(0.97); opacity: 0.9; }
+        .btn-base:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); z-index: 0; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .text-gold { color: #d97706; }
+        .text-silver { color: #64748b; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+<style>
+  .portal-back{display:flex;align-items:center;gap:6px;padding:11px 14px;
+    font:500 13px/1 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;text-decoration:none;}
+  .portal-back:active{background:#f1f5f9;}
+</style>
+<a class="portal-back" href="../">← ツール一覧</a>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Constants & Probability Tables ---
+        const SETTINGS = [1, 2, 3, 4, 5, 6];
+        const STATES = { NORMAL: 0, HIGHA: 1, HIGHB: 2, ULTRA: 3 };
+        const STATE_NAMES = ["通常", "高確A", "高確B", "超高確"];
+
+        // Distributions (Length 4)
+        const AT_END_DIST = [0.797, 0.195, 0.004, 0.004]; 
+        const NORMAL_START_DIST = [1.0, 0, 0, 0];
+
+        // Rewrite Rates
+        const REWRITE_RATES = { WEAK_CHERRY: 0.031, STRONG_RARE: 0.203, STRONG_CHERRY: 0.402, BELL_7: 0.0 };
+        const CE_REWRITE_RATES = { WEAK_CHERRY: 0.25, STRONG_RARE: 1.0, STRONG_CHERRY: 1.0, BELL_7: 0.0 };
+        
+        // Development Rates
+        const CE_DEV_RATES = {
+            WEAK_CHERRY: [0.004, 0.008, 0.016, 0.016], 
+            STRONG_RARE: [0.500, 0.602, 0.750, 0.750], 
+            STRONG_CHERRY: [1.0, 1.0, 1.0, 1.0], 
+            BELL_7: [0.301, 0.301, 0.301, 0.301]
+        };
+
+        // Success Rates
+        const CE_SUCCESS_RATES = [0.241, 0.361, 0.401, 1.0]; 
+
+        // Transitions (合計が厳密に1.000になるよう修正済み)
+        const TRANSITION_WEAK_CHERRY_FROM_NORMAL = { 
+            1: [0.808, 0.172, 0.020, 0.000], 2: [0.797, 0.180, 0.023, 0.000], 
+            3: [0.781, 0.188, 0.031, 0.000], 4: [0.640, 0.313, 0.047, 0.000], 
+            5: [0.621, 0.328, 0.051, 0.000], 6: [0.601, 0.344, 0.055, 0.000] 
+        };
+        const TRANSITION_WEAK_CHERRY_FROM_HIGHA = { 
+            1: [0, 0.898, 0.098, 0.004], 2: [0, 0.891, 0.105, 0.004], 
+            3: [0, 0.867, 0.129, 0.004], 4: [0, 0.781, 0.215, 0.004], 
+            5: [0, 0.766, 0.230, 0.004], 6: [0, 0.750, 0.246, 0.004] 
+        };
+
+        const TRANSITION_CE_FAIL_FROM_NORMAL = { 
+            1: [0.804, 0.172, 0.020, 0.004], 2: [0.793, 0.180, 0.023, 0.004], 
+            3: [0.777, 0.188, 0.031, 0.004], 4: [0.636, 0.313, 0.047, 0.004], 
+            5: [0.617, 0.328, 0.051, 0.004], 6: [0.597, 0.344, 0.055, 0.004] 
+        };
+        const TRANSITION_CE_FAIL_FROM_HIGHA = { 
+            1: [0, 0.898, 0.098, 0.004], 2: [0, 0.891, 0.105, 0.004], 
+            3: [0, 0.867, 0.129, 0.004], 4: [0, 0.781, 0.215, 0.004], 
+            5: [0, 0.766, 0.230, 0.004], 6: [0, 0.750, 0.246, 0.004] 
+        };
+
+        const EPSILON = 1e-20;
+        const clampProb = (p) => Math.min(Math.max(p, 0.0001), 0.9999);
+        
+        const normalizeLikelihoods = (likelihoods) => {
+            if (!Array.isArray(likelihoods) || likelihoods.length < 7) return [0, 1, 1, 1, 1, 1, 1];
+            let sum = 0;
+            for (let i = 1; i < likelihoods.length; i++) {
+                const val = parseFloat(likelihoods[i]);
+                sum += (isNaN(val) || val < 0) ? 0 : val;
+            }
+            if (sum <= 0) return [0, 1, 1, 1, 1, 1, 1];
+            const newLikelihoods = [...likelihoods];
+            for (let i = 1; i < newLikelihoods.length; i++) {
+                let v = newLikelihoods[i];
+                if (isNaN(v) || v < 0) v = 0;
+                newLikelihoods[i] = v / sum;
+            }
+            return newLikelihoods;
+        };
+
+        const calcTransition = (currentDist, tableNormal, tableHighA, setting) => {
+            const nextDist = [0, 0, 0, 0];
+            const safeDist = (Array.isArray(currentDist) && currentDist.length >= 4) ? currentDist : NORMAL_START_DIST;
+            
+            const pNormal = safeDist[STATES.NORMAL] || 0;
+            const pHighA = safeDist[STATES.HIGHA] || 0;
+            const pHighB = safeDist[STATES.HIGHB] || 0;
+            const pUltra = safeDist[STATES.ULTRA] || 0;
+
+            const tn = tableNormal[setting] || [1,0,0,0];
+            for(let i=0; i<4; i++) nextDist[i] += pNormal * tn[i];
+
+            const ta = tableHighA[setting] || [1,0,0,0];
+            for(let i=0; i<4; i++) nextDist[i] += pHighA * ta[i];
+
+            nextDist[STATES.HIGHB] += pHighB * 0.996;
+            nextDist[STATES.ULTRA] += pHighB * 0.004;
+            nextDist[STATES.ULTRA] += pUltra;
+
+            return nextDist;
+        };
+
+        const createInitialStateProbs = (dist) => Array.from({ length: 7 }, () => [...dist]);
+
+        // デバッグ済: 完全な条件付き確率ツリーによる見かけ上の確率算出
+        const getApparentProbs = (dist, trigger, bellCount, pRwPre, pRwCe, isSecondCE) => {
+            const safeDist = dist || NORMAL_START_DIST;
+            
+            let pDev = 0;
+            // 第2前兆(どん底)経由の場合は、自力発展率を100%として計算する
+            if (isSecondCE) {
+                pDev = 1.0;
+            } else {
+                const devRates = CE_DEV_RATES[trigger] || [0,0,0,0];
+                pDev += safeDist[STATES.NORMAL] * devRates[0];
+                pDev += safeDist[STATES.HIGHA] * devRates[1];
+                pDev += safeDist[STATES.HIGHB] * devRates[2];
+                let ultraDevRate = devRates[3];
+                if (trigger === 'BELL_7' && bellCount >= 2) ultraDevRate = 1.0;
+                pDev += safeDist[STATES.ULTRA] * ultraDevRate;
+            }
+
+            let pSuccGivenDev = 0;
+            const succRates = CE_SUCCESS_RATES;
+            pSuccGivenDev += safeDist[STATES.NORMAL] * succRates[0];
+            pSuccGivenDev += safeDist[STATES.HIGHA] * succRates[1];
+            pSuccGivenDev += safeDist[STATES.HIGHB] * succRates[2];
+            let ultraSuccRate = 1.0;
+            if (trigger === 'BELL_7' && bellCount < 2) ultraSuccRate = 0.301;
+            pSuccGivenDev += safeDist[STATES.ULTRA] * ultraSuccRate;
+
+            // STEP 1 (発展判定)
+            const pNotDevApparent = (1.0 - pDev) * (1.0 - pRwPre);
+            const pDevApparent = pDev + (1.0 - pDev) * pRwPre;
+
+            // STEP 2 (当落判定: 連演書き換えは発展した場合のみ受けられる)
+            const pFailTotal = (1.0 - pRwPre) * pDev * (1.0 - pSuccGivenDev) * (1.0 - pRwCe);
+            const pSuccTotal = pRwPre + (1.0 - pRwPre) * pDev * (pSuccGivenDev + (1.0 - pSuccGivenDev) * pRwCe);
+
+            // 尤度に掛けるのは「発展したという条件下での確率」
+            const pFailGivenDevApparent = pDevApparent > 0 ? pFailTotal / pDevApparent : 0;
+            const pSuccGivenDevApparent = pDevApparent > 0 ? pSuccTotal / pDevApparent : 0;
+
+            return {
+                pNotDevApparent,
+                pDevApparent,
+                pFailGivenDevApparent,
+                pSuccGivenDevApparent
+            };
+        };
+
+        // --- 入力の自動保存（スマホでタブが破棄されても消えない） ---
+        const SAVE = {
+            KEY: "garupan_v1",
+            load() { try { const r = localStorage.getItem(this.KEY); return r ? JSON.parse(r) : null; } catch (_) { return null; } },
+            save(v) { try { localStorage.setItem(this.KEY, JSON.stringify(v)); } catch (_) {} },
+            clear() { try { localStorage.removeItem(this.KEY); } catch (_) {} },
+        };
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('main');
+            const [history, setHistory] = useState([]);
+            const [future, setFuture] = useState([]);
+            
+            const [simState, setSimState] = useState({
+                stateProbs: createInitialStateProbs(NORMAL_START_DIST), 
+                settingLikelihoods: Array(7).fill(1.0),
+                snapshotProbs: createInitialStateProbs(NORMAL_START_DIST), 
+                isAtEnd: false, isPrecursor: false, inCE: false, 
+                isSecondCE: false, // 1回目失敗経由のどん底フラグ(計算用)
+                isDondoko: false,  // UI表示・直行どん底含む滞在フラグ
+                
+                precursorRewriteChance: 0.0, 
+                ceRewriteChance: 0.0,
+                
+                pFail1stApparents: Array(7).fill(1.0),
+
+                log: [], lastTrigger: null, bell7Count: 0 
+            });
+
+            const [counters, setCounters] = useState({
+                atScreens: { default: 0, highWeak: 0, highStrong: 0, ka: 0, kichi: 0, ryo: 0, yu: 0, kiwami: 0 },
+                suggestions: { set2: false, set3: false, set4: false, set5: false }
+            });
+
+            const [showRareMenu, setShowRareMenu] = useState(false);
+            const [showDataModal, setShowDataModal] = useState(false);
+            const [importText, setImportText] = useState("");
+
+            // --- 自動保存: 起動時に復元 → 以降は変更のたび保存 ---
+            const [restored, setRestored] = useState(false);
+            useEffect(() => {
+                const d = SAVE.load();
+                if (d) {
+                    if (d.simState) setSimState(d.simState);
+                    if (d.counters) setCounters(d.counters);
+                    if (d.activeTab) setActiveTab(d.activeTab);
+                    if (Array.isArray(d.history)) setHistory(d.history);
+                }
+                setRestored(true);
+            }, []);
+            useEffect(() => {
+                if (!restored) return;
+                SAVE.save({ simState, counters, activeTab, history: history.slice(-30) });
+            }, [restored, simState, counters, activeTab, history]);
+
+            // --- Logic ---
+            const pushHistory = (newState) => {
+                setHistory(prev => [...prev, simState]);
+                setSimState(newState);
+                setFuture([]);
+            };
+            const undo = () => {
+                if (history.length === 0) return;
+                const prev = history[history.length - 1];
+                setFuture(prevFuture => [simState, ...prevFuture]);
+                setSimState(prev);
+                setHistory(prevHistory => prevHistory.slice(0, -1));
+            };
+            const redo = () => {
+                if (future.length === 0) return;
+                const next = future[0];
+                setHistory(prevHistory => [...prevHistory, simState]);
+                setSimState(next);
+                setFuture(prevFuture => prevFuture.slice(1));
+            };
+            const resetAll = () => {
+                if(!confirm("データをリセットしますか？")) return;
+                setSimState({
+                    stateProbs: createInitialStateProbs(NORMAL_START_DIST),
+                    settingLikelihoods: Array(7).fill(1.0),
+                    snapshotProbs: createInitialStateProbs(NORMAL_START_DIST),
+                    isAtEnd: false, isPrecursor: false, inCE: false, isSecondCE: false, isDondoko: false,
+                    precursorRewriteChance: 0.0, ceRewriteChance: 0.0, pFail1stApparents: Array(7).fill(1.0),
+                    log: [], lastTrigger: null, bell7Count: 0
+                });
+                setCounters({ atScreens: { default: 0, highWeak: 0, highStrong: 0, ka: 0, kichi: 0, ryo: 0, yu: 0, kiwami: 0 }, suggestions: { set2: false, set3: false, set4: false, set5: false } });
+                setHistory([]); setFuture([]);
+            };
+            const updateCounter = (key, delta) => setCounters(prev => ({ ...prev, atScreens: { ...prev.atScreens, [key]: Math.max(0, prev.atScreens[key] + delta) } }));
+            const copyToClipboard = () => { const data = JSON.stringify({ simState, counters }); const ta = document.createElement("textarea"); ta.value = data; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); alert("コピーしました"); };
+            const importData = () => { try { if (!importText) return; const data = JSON.parse(importText); if (data.simState && data.counters) { setSimState(data.simState); setCounters(data.counters); setHistory([]); setFuture([]); setShowDataModal(false); setImportText(""); alert("読み込みました"); } } catch (e) { alert("読み込み失敗"); } };
+
+            const handleToggleAT = () => {
+                const newState = { ...simState, isAtEnd: !simState.isAtEnd };
+                const dist = newState.isAtEnd ? AT_END_DIST : NORMAL_START_DIST;
+                newState.stateProbs = createInitialStateProbs(dist); newState.snapshotProbs = createInitialStateProbs(dist);
+                newState.bell7Count = 0;
+                newState.log = [{ text: newState.isAtEnd ? "AT終了後スタート" : "通常スタート", type: "system" }, ...newState.log];
+                pushHistory(newState);
+            };
+
+            const handleTogglePrecursor = () => {
+                if (simState.isPrecursor || simState.inCE) return;
+                let s = { ...simState };
+                s.isPrecursor = true;
+                s.log = [{ text: "前兆開始 (書き換え抽選有効)", type: "system" }, ...s.log];
+                pushHistory(s);
+            };
+            
+            const handle100G = () => {
+                let s = { ...simState };
+                s.stateProbs = s.stateProbs.map(d => {
+                    const n = [0,0,0,0];
+                    n[STATES.HIGHA] += d[STATES.NORMAL]||0; n[STATES.HIGHB] += d[STATES.HIGHA]||0; 
+                    n[STATES.ULTRA] += (d[STATES.HIGHB]||0) + (d[STATES.ULTRA]||0);
+                    return n;
+                });
+                if (!s.isPrecursor && !s.inCE) s.snapshotProbs = JSON.parse(JSON.stringify(s.stateProbs));
+                s.log = [{ text: "100G消化 (状態昇格)", type: "event" }, ...s.log];
+                pushHistory(s);
+            };
+
+            const handleJohannesburg = () => {
+                let s = { ...simState };
+
+                s.settingLikelihoods = s.settingLikelihoods.map((l, i) => {
+                    if (i === 0) return 0;
+                    const pNormal = s.stateProbs[i][STATES.NORMAL] || 0;
+                    const pNotNormal = 1.0 - pNormal;
+                    return Math.max(l * clampProb(pNotNormal), EPSILON);
+                });
+                s.settingLikelihoods = normalizeLikelihoods(s.settingLikelihoods);
+
+                s.stateProbs = s.stateProbs.map((d, i) => {
+                    if (i === 0) return d;
+                    const n = [...d];
+                    const sumNotNormal = (n[STATES.HIGHA] || 0) + (n[STATES.HIGHB] || 0) + (n[STATES.ULTRA] || 0);
+                    
+                    if (sumNotNormal > 0) {
+                        n[STATES.HIGHA] = (n[STATES.HIGHA] || 0) / sumNotNormal;
+                        n[STATES.HIGHB] = (n[STATES.HIGHB] || 0) / sumNotNormal;
+                        n[STATES.ULTRA] = (n[STATES.ULTRA] || 0) / sumNotNormal;
+                    } else {
+                        n[STATES.HIGHA] = 1.0;
+                        n[STATES.HIGHB] = 0;
+                        n[STATES.ULTRA] = 0;
+                    }
+                    n[STATES.NORMAL] = 0;
+                    return n;
+                });
+
+                s.log = [{ text: "ヨハネスブルグ (通常否定)", type: "important" }, ...s.log];
+                pushHistory(s);
+            };
+
+            const handleCeiling = () => {
+                let s = { ...simState };
+                s.stateProbs = createInitialStateProbs(NORMAL_START_DIST); s.snapshotProbs = createInitialStateProbs(NORMAL_START_DIST);
+                s.isPrecursor = false; s.inCE = false; s.isSecondCE = false; s.isDondoko = false;
+                s.precursorRewriteChance = 0.0; s.ceRewriteChance = 0.0; s.bell7Count = 0;
+                s.log = [{ text: "天井到達 (CZ当選)", type: "result-good" }, ...s.log];
+                pushHistory(s);
+            };
+
+            const handleTrigger = (type) => {
+                let s = { ...simState };
+                
+                if (type === 'BELL_7') s.bell7Count = (s.bell7Count || 0) + 1;
+
+                let logText = type === 'BELL_7' ? "ベル7回" : type === 'WEAK_CHERRY' ? "弱チェリー" : type === 'STRONG_RARE' ? "強レア役" : "強チェリー";
+
+                if (!s.isPrecursor && !s.inCE) {
+                    s.lastTrigger = type;
+                    s.snapshotProbs = JSON.parse(JSON.stringify(s.stateProbs));
+                    
+                    if (type === 'WEAK_CHERRY') {
+                        s.stateProbs = s.stateProbs.map((d, i) => {
+                            if (i === 0) return d;
+                            return calcTransition(d, TRANSITION_WEAK_CHERRY_FROM_NORMAL, TRANSITION_WEAK_CHERRY_FROM_HIGHA, i);
+                        });
+                    }
+                }
+
+                if (s.isPrecursor && !s.inCE) {
+                    const rate = REWRITE_RATES[type] || 0;
+                    s.precursorRewriteChance = 1.0 - ((1.0 - s.precursorRewriteChance) * (1.0 - rate));
+                } else if (s.inCE) {
+                    const rate = CE_REWRITE_RATES[type] || 0;
+                    s.ceRewriteChance = 1.0 - ((1.0 - s.ceRewriteChance) * (1.0 - rate));
+                }
+
+                if (s.inCE) {
+                    logText += " (連演中)";
+                } else if (s.isPrecursor) {
+                    logText += " (前兆中)";
+                }
+                
+                let newLogs = [{ text: logText, type: type === 'BELL_7' ? "event" : "role" }];
+
+                // 自動前兆開始
+                if ((type === 'STRONG_RARE' || type === 'STRONG_CHERRY' || type === 'BELL_7') && !s.isPrecursor && !s.inCE) {
+                    s.isPrecursor = true; newLogs.unshift({ text: "前兆開始 (書き換え抽選有効)", type: "system" });
+                }
+
+                s.log = [...newLogs, ...s.log];
+                pushHistory(s);
+                setShowRareMenu(false);
+            };
+
+            const handleNotDev = () => {
+                let s = { ...simState };
+                const trigger = s.lastTrigger || 'WEAK_CHERRY';
+                const source = s.snapshotProbs; 
+
+                s.settingLikelihoods = s.settingLikelihoods.map((l, i) => {
+                    if (i === 0) return 0;
+                    const probs = getApparentProbs(source[i], trigger, s.bell7Count, s.precursorRewriteChance, s.ceRewriteChance, s.isSecondCE);
+                    return Math.max(l * clampProb(probs.pNotDevApparent), EPSILON);
+                });
+                s.settingLikelihoods = normalizeLikelihoods(s.settingLikelihoods);
+                s.isPrecursor = false; s.inCE = false; s.isSecondCE = false; s.isDondoko = false;
+                s.precursorRewriteChance = 0.0; s.ceRewriteChance = 0.0;
+                s.log = [{ text: "非発展 (終了)", type: "result-bad" }, ...s.log];
+                pushHistory(s);
+            };
+
+            const handleDirectDondoko = () => {
+                let s = { ...simState };
+                s.isDondoko = true; 
+                s.pFail1stApparents = Array(7).fill(1.0); 
+                s.log = [{ text: "どん底移行 (直行)", type: "important" }, ...s.log];
+                pushHistory(s);
+            };
+
+            const handleDev = () => {
+                let s = { ...simState };
+                s.inCE = true; 
+                s.isPrecursor = false;
+                const trigger = s.lastTrigger || 'WEAK_CHERRY';
+                
+                s.settingLikelihoods = s.settingLikelihoods.map((l, i) => {
+                    if (i === 0) return 0;
+                    if (s.isSecondCE) return l; // 1回目失敗経由のどん底は評価済みなのでパス
+
+                    // 1回目の発展（直行どん底含む）は尤度を掛ける
+                    const probs = getApparentProbs(s.snapshotProbs[i], trigger, s.bell7Count, s.precursorRewriteChance, s.ceRewriteChance, s.isSecondCE);
+                    return Math.max(l * clampProb(probs.pDevApparent), EPSILON);
+                });
+                s.settingLikelihoods = normalizeLikelihoods(s.settingLikelihoods);
+                
+                const text = s.isSecondCE ? "連続演出発展 (2回目)" : "連続演出発展";
+                s.log = [{ text: text, type: "event" }, ...s.log];
+                
+                s.isDondoko = false; // 発展したのでどん底前兆状態は終了
+                pushHistory(s);
+            };
+
+            const handleFailNext = () => {
+                let s = { ...simState };
+                const source = s.snapshotProbs;
+                const trigger = s.lastTrigger;
+                
+                s.pFail1stApparents = Array(7).fill(1.0);
+
+                s.settingLikelihoods = s.settingLikelihoods.map((l, i) => {
+                    if (i === 0) return 0;
+                    const probs = getApparentProbs(source[i], trigger, s.bell7Count, s.precursorRewriteChance, s.ceRewriteChance, s.isSecondCE);
+                    const factor = clampProb(probs.pFailGivenDevApparent);
+                    s.pFail1stApparents[i] = factor; 
+                    return Math.max(l * factor, EPSILON);
+                });
+                s.settingLikelihoods = normalizeLikelihoods(s.settingLikelihoods);
+
+                s.stateProbs = s.stateProbs.map((d, i) => {
+                    if (i === 0) return d;
+                    return calcTransition(d, TRANSITION_CE_FAIL_FROM_NORMAL, TRANSITION_CE_FAIL_FROM_HIGHA, i);
+                });
+
+                // どん底（第2前兆）へ移行
+                s.inCE = false; s.isPrecursor = true; 
+                s.isSecondCE = true; s.isDondoko = true; 
+                s.precursorRewriteChance = 0.0; s.ceRewriteChance = 0.0; 
+                s.log = [{ text: "失敗 (どん底→前兆)", type: "result-bad" }, ...s.log];
+                pushHistory(s);
+            };
+
+            const handleFailEnd = () => {
+                let s = { ...simState };
+                const source = s.snapshotProbs;
+                const trigger = s.lastTrigger;
+
+                s.settingLikelihoods = s.settingLikelihoods.map((l, i) => {
+                    if (i === 0) return 0;
+                    let currentL = l;
+                    if (s.isSecondCE) {
+                        currentL = currentL / clampProb(s.pFail1stApparents[i]);
+                    }
+                    const probs = getApparentProbs(source[i], trigger, s.bell7Count, s.precursorRewriteChance, s.ceRewriteChance, s.isSecondCE);
+                    return Math.max(currentL * clampProb(probs.pFailGivenDevApparent), EPSILON);
+                });
+                s.settingLikelihoods = normalizeLikelihoods(s.settingLikelihoods);
+
+                s.stateProbs = s.stateProbs.map((d, i) => {
+                    if (i === 0) return d;
+                    return calcTransition(d, TRANSITION_CE_FAIL_FROM_NORMAL, TRANSITION_CE_FAIL_FROM_HIGHA, i);
+                });
+
+                s.inCE = false; s.isPrecursor = false; s.isSecondCE = false; s.isDondoko = false;
+                s.precursorRewriteChance = 0.0; s.ceRewriteChance = 0.0;
+                s.log = [{ text: "失敗 (通常へ)", type: "result-bad" }, ...s.log];
+                pushHistory(s);
+            };
+
+            const handleSuccess = () => {
+                let s = { ...simState };
+                const source = s.snapshotProbs;
+                const trigger = s.lastTrigger;
+
+                s.settingLikelihoods = s.settingLikelihoods.map((l, i) => {
+                    if (i === 0) return 0;
+                    let currentL = l;
+                    if (s.isSecondCE) {
+                        currentL = currentL / clampProb(s.pFail1stApparents[i]);
+                    }
+                    const probs = getApparentProbs(source[i], trigger, s.bell7Count, s.precursorRewriteChance, s.ceRewriteChance, s.isSecondCE);
+                    return Math.max(currentL * clampProb(probs.pSuccGivenDevApparent), EPSILON);
+                });
+                s.settingLikelihoods = normalizeLikelihoods(s.settingLikelihoods);
+
+                s.stateProbs = createInitialStateProbs(NORMAL_START_DIST); s.snapshotProbs = createInitialStateProbs(NORMAL_START_DIST);
+                s.log = [{ text: "成功 (CZ当選)", type: "result-good" }, ...s.log];
+                s.precursorRewriteChance = 0.0; s.ceRewriteChance = 0.0; 
+                s.isPrecursor = false; s.isAtEnd = false; s.inCE = false; s.isSecondCE = false; s.isDondoko = false;
+                s.bell7Count = 0;
+                pushHistory(s);
+            };
+
+            const getSettingPercentages = () => {
+                if (!simState.settingLikelihoods || !Array.isArray(simState.settingLikelihoods)) return [0,0,0,0,0,0,0];
+                let probs = [...simState.settingLikelihoods];
+                if (counters.suggestions.set2) probs[1] = 0; 
+                if (counters.suggestions.set3) { probs[1] = 0; probs[2] = 0; }
+                if (counters.suggestions.set4) { probs[1]=0; probs[2]=0; probs[3]=0; } 
+                if (counters.suggestions.set5) { probs[1]=0; probs[2]=0; probs[3]=0; probs[4]=0; }
+                
+                const total = probs.slice(1).reduce((a, b) => a + (b || 0), 0);
+                if (total === 0 || isNaN(total)) return [0,0,0,0,0,0,0];
+                return probs.map(p => ((p || 0) / total) * 100);
+            };
+            
+            const pct = getSettingPercentages();
+            
+            const totalRewriteChance = 1.0 - (1.0 - simState.precursorRewriteChance) * (1.0 - simState.ceRewriteChance);
+
+            return (
+                <div className="max-w-md mx-auto bg-slate-50 min-h-screen pb-24 font-sans text-slate-700">
+                    <div className="glass sticky top-0 z-50 shadow-sm">
+                        <div className="px-4 py-3">
+                            <h1 className="text-slate-800 font-extrabold text-lg text-center tracking-wider mb-2">ガルパン最終章 設定判別</h1>
+                            <div className="flex items-center justify-between bg-slate-100/80 rounded-xl p-1 border border-slate-200 shadow-inner">
+                                <div className={`flex-1 text-center py-1.5 rounded-lg text-xs font-bold transition-all ${!simState.isPrecursor && !simState.inCE ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}>通常</div>
+                                <div className="text-slate-300 px-1">›</div>
+                                <div className={`flex-1 text-center py-1.5 rounded-lg text-xs font-bold transition-all ${(simState.isPrecursor && !simState.inCE) ? (simState.isDondoko ? 'bg-purple-500 text-white shadow-md' : 'bg-blue-500 text-white shadow-md') : 'text-slate-400'}`}>
+                                    {simState.isDondoko ? "どん底(前兆)" : "前兆"}
+                                </div>
+                                <div className="text-slate-300 px-1">›</div>
+                                <div className={`flex-1 text-center py-1.5 rounded-lg text-xs font-bold transition-all ${simState.inCE ? (simState.isSecondCE ? 'bg-purple-600 text-white shadow-md' : 'bg-indigo-500 text-white shadow-md') : 'text-slate-400'}`}>
+                                    連演
+                                </div>
+                            </div>
+                            {(simState.isPrecursor || simState.inCE) && (
+                                <div className="mt-2 text-[10px] text-center font-mono py-0.5 rounded border bg-indigo-50 border-indigo-100 text-indigo-600 font-bold">
+                                    書き換え期待度: <span className="text-lg mx-1">{(totalRewriteChance * 100).toFixed(1)}</span>%
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+                        {activeTab === 'main' ? (
+                            <>
+                                <div className="flex justify-between items-center gap-2">
+                                    <div className="flex gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
+                                        <button onClick={undo} disabled={history.length===0} className="btn-base w-10 h-8 rounded-lg text-xs font-bold bg-slate-100 text-slate-500 disabled:opacity-30">↶</button>
+                                        <button onClick={redo} disabled={future.length===0} className="btn-base w-10 h-8 rounded-lg text-xs font-bold bg-slate-100 text-slate-500 disabled:opacity-30">↷</button>
+                                    </div>
+                                    <button onClick={handleToggleAT} className={`flex-1 btn-base rounded-xl text-xs font-bold border transition-colors shadow-sm ${simState.isAtEnd ? 'bg-pink-100 border-pink-300 text-pink-600' : 'bg-white border-slate-200 text-slate-400'}`}>AT終了後 {simState.isAtEnd ? 'ON' : 'OFF'}</button>
+                                    <button onClick={() => setShowDataModal(true)} className="btn-base w-10 h-10 rounded-full bg-white border border-slate-200 text-slate-400 shadow-sm text-lg">💾</button>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="relative row-span-2">
+                                        <button onClick={() => setShowRareMenu(!showRareMenu)} className="btn-base w-full h-full bg-gradient-to-br from-white to-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl shadow-soft flex flex-col items-center justify-center active:scale-95">
+                                            <span className="text-3xl mb-1 filter drop-shadow-sm">🍒</span><span className="font-bold text-lg">レア役</span><span className="text-[10px] text-emerald-600/70 mt-1">タップして選択</span>
+                                        </button>
+                                        {showRareMenu && (
+                                            <div className="absolute top-0 left-0 w-full h-full bg-white/95 backdrop-blur-sm border border-emerald-200 rounded-2xl shadow-xl z-20 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                                <button onClick={() => handleTrigger('WEAK_CHERRY')} className="flex-1 border-b border-slate-100 hover:bg-emerald-50 text-emerald-800 font-bold text-sm">🍒 弱チェリー</button>
+                                                <button onClick={() => handleTrigger('STRONG_RARE')} className="flex-1 border-b border-slate-100 hover:bg-emerald-50 text-emerald-800 font-bold text-sm">🎋 強レア役</button>
+                                                <button onClick={() => handleTrigger('STRONG_CHERRY')} className="flex-1 hover:bg-red-50 text-red-600 font-bold text-sm">🍒 強チェリー</button>
+                                                <button onClick={() => setShowRareMenu(false)} className="h-10 bg-slate-50 text-xs text-slate-400 font-bold">閉じる</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="grid grid-rows-2 gap-3">
+                                        <button onClick={() => handleTrigger('BELL_7')} className="btn-base bg-gradient-to-br from-white to-amber-50 border border-amber-200 text-amber-700 p-3 rounded-2xl shadow-soft font-bold flex items-center justify-center gap-2 active:scale-95">
+                                            <span className="text-xl">🔔</span><span className="font-bold">ベル7回</span>
+                                        </button>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <button onClick={handle100G} className="btn-base bg-white border border-blue-200 text-blue-600 p-1 rounded-xl shadow-soft flex flex-col items-center justify-center active:bg-blue-50"><span className="font-bold text-xs">100G</span><span className="text-[8px] opacity-70">消化</span></button>
+                                            <button onClick={handleJohannesburg} className="btn-base bg-white border border-red-200 text-red-600 p-1 rounded-xl shadow-soft flex flex-col items-center justify-center active:bg-red-50"><span className="font-bold text-[9px] leading-tight">ヨハネス<br/>ブルグ</span></button>
+                                            <button onClick={handleCeiling} className="btn-base bg-white border border-purple-200 text-purple-700 p-1 rounded-xl shadow-soft flex flex-col items-center justify-center active:bg-purple-50"><span className="font-bold text-xs">天井</span><span className="text-[9px] opacity-70">到達</span></button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">フェーズ進行</h3>
+                                        {/* どん底(前兆)滞在時のバッジ表示 */}
+                                        {simState.isDondoko && !simState.inCE && (
+                                            <div className="flex items-center ml-auto bg-purple-50 rounded-full border border-purple-200 overflow-hidden shadow-sm animate-in fade-in zoom-in-95 duration-200">
+                                                <span className="text-[10px] font-bold px-2 py-0.5 text-purple-700 border-r border-purple-200">どん底滞在</span>
+                                                <span className="text-[10px] font-bold px-2 py-0.5 bg-pink-500 text-white">発展濃厚</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={handleTogglePrecursor}
+                                            disabled={simState.inCE || simState.isPrecursor}
+                                            className={`w-14 py-3 rounded-xl border text-center transition-all duration-300 btn-base flex-shrink-0 ${
+                                                (simState.isPrecursor && !simState.inCE) 
+                                                ? 'bg-gradient-to-b from-blue-500 to-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200 scale-105 z-10 cursor-default' 
+                                                : 'bg-white border-slate-200 text-slate-300'
+                                            }`}
+                                        >
+                                            <div className="text-[9px] font-bold mb-0.5 opacity-80">STEP 1</div><div className="text-xs font-bold">前兆</div>
+                                        </button>
+
+                                        <div className="flex items-center text-slate-300 -mx-1">➜</div>
+
+                                        <div className="flex-1 flex gap-1.5">
+                                            <button onClick={handleNotDev} disabled={!simState.isPrecursor || simState.inCE || simState.isDondoko}
+                                                className={`flex-1 py-1 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition-all btn-base ${(!simState.isPrecursor || simState.inCE || simState.isDondoko) ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-slate-300 text-slate-500 shadow-sm active:scale-95'}`}>
+                                                <span>非発展</span><span className="opacity-70 font-normal scale-90">(終了)</span>
+                                            </button>
+                                            
+                                            <button onClick={handleDirectDondoko} disabled={!simState.isPrecursor || simState.inCE || simState.isDondoko || simState.isSecondCE}
+                                                className={`flex-1 py-1 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition-all btn-base ${(!simState.isPrecursor || simState.inCE || simState.isDondoko || simState.isSecondCE) ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-purple-300 text-purple-600 shadow-sm active:scale-95'}`}>
+                                                <span>どん底</span><span className="opacity-70 font-normal scale-90">(直行)</span>
+                                            </button>
+
+                                            <button onClick={handleDev} disabled={!simState.isPrecursor || simState.inCE}
+                                                className={`flex-1 py-1 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition-all btn-base ${(!simState.isPrecursor || simState.inCE) ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-blue-400 text-blue-600 shadow-sm active:scale-95'}`}>
+                                                <span>発展</span><span className="opacity-70 font-normal scale-90">(連演へ)</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className={`rounded-xl p-3 border transition-all duration-300 ${simState.inCE ? (simState.isSecondCE ? 'bg-purple-50 border-purple-200 shadow-md' : 'bg-indigo-50 border-indigo-200 shadow-md') : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                                        <div className="flex justify-between items-center mb-3">
+                                            {/* 連続演出(2回目)の明記 */}
+                                            <div className={`text-xs font-bold flex items-center ${simState.inCE ? (simState.isSecondCE ? 'text-purple-600' : 'text-indigo-600') : 'text-slate-400'}`}>
+                                                STEP 2 : 連続演出 {simState.isSecondCE ? <span className="ml-1.5 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded">2回目</span> : ""}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <button onClick={handleFailNext} disabled={!simState.inCE || simState.isSecondCE}
+                                                className={`btn-base py-3 rounded-lg border text-xs font-bold shadow-sm flex flex-col items-center justify-center ${(!simState.inCE || simState.isSecondCE) ? 'bg-slate-100 border-slate-200 text-slate-300' : 'bg-white border-indigo-300 text-indigo-600 active:bg-indigo-50'}`}>
+                                                失敗<span className="text-[9px] opacity-70">(どん底へ)</span>
+                                            </button>
+                                            <button onClick={handleFailEnd} disabled={!simState.inCE}
+                                                className={`btn-base py-3 rounded-lg border text-xs font-bold shadow-sm flex flex-col items-center justify-center ${!simState.inCE ? 'bg-slate-100 border-slate-200 text-slate-300' : 'bg-white border-slate-400 text-slate-600 active:bg-slate-50'}`}>
+                                                失敗<span className="text-[9px] opacity-70">(通常へ)</span>
+                                            </button>
+                                            <button onClick={handleSuccess} disabled={!simState.inCE}
+                                                className={`btn-base py-3 rounded-lg border text-xs font-bold shadow-sm flex flex-col items-center justify-center ${!simState.inCE ? 'bg-slate-100 border-slate-200 text-slate-300' : 'bg-gradient-to-br from-pink-500 to-rose-500 border-pink-600 text-white active:scale-95'}`}>
+                                                成功<span className="text-[9px] opacity-80">(CZ当選)</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider">履歴</div>
+                                    <div className="h-32 overflow-y-auto scrollbar-hide space-y-1.5 pr-1">
+                                        {simState.log.length === 0 && <div className="text-center text-xs text-slate-300 py-10">履歴なし</div>}
+                                        {simState.log.map((e, i) => (
+                                            <div key={i} className="text-xs py-2 px-3 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between">
+                                                <span className={`font-bold ${e.type==='result-good'?'text-pink-500':e.type==='result-bad'?'text-blue-500':e.type==='important'?'text-purple-600':'text-slate-600'}`}>{e.text}</span>
+                                                <span className={`w-2 h-2 rounded-full ${e.type==='result-good'?'bg-pink-400':e.type==='result-bad'?'bg-blue-400':e.type==='important'?'bg-purple-500':'bg-slate-300'}`}></span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="space-y-6">
+                                {/* Analysis Tab */}
+                                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                                    <h2 className="text-center text-slate-700 font-bold mb-6 text-sm tracking-wider">設定推測結果</h2>
+                                    <div className="space-y-4">
+                                        {[1, 2, 3, 4, 5, 6].map(num => {
+                                            const p = pct[num] || 0;
+                                            const isTop = Math.max(...pct.slice(1)) === p && p > 0;
+                                            return (
+                                                <div key={num} className="flex items-center">
+                                                    <div className={`w-8 text-sm font-bold ${isTop ? 'text-pink-600' : 'text-slate-400'}`}>設定{num}</div>
+                                                    <div className="flex-1 h-3 bg-slate-100 rounded-full mx-3 overflow-hidden relative">
+                                                        <div className={`h-full transition-all duration-700 ease-out ${isTop ? 'bg-pink-500' : 'bg-slate-400'}`} style={{ width: `${p}%` }}></div>
+                                                    </div>
+                                                    <div className={`w-12 text-sm text-right font-mono ${isTop ? 'text-pink-600 font-bold' : 'text-slate-500'}`}>{p.toFixed(1)}%</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="text-center text-[10px] text-slate-400 mt-6 pt-4 border-t border-slate-100">※初期値は均等(16.7%)</div>
+                                </div>
+                                <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                                    <h3 className="text-xs text-slate-500 mb-4 font-bold text-center">現在の状態推測 (全設定)</h3>
+                                    <div className="space-y-2">
+                                        {SETTINGS.map(setting => (
+                                            <div key={setting} className="flex items-center gap-2">
+                                                <div className="text-[10px] w-8 font-bold text-slate-500 text-right">設定{setting}</div>
+                                                <div className="flex-1 flex text-[9px] text-center rounded overflow-hidden h-4 bg-slate-100 w-full">
+                                                    {STATE_NAMES.map((name, idx) => {
+                                                        const prob = (simState.stateProbs?.[setting] || [])[idx] || 0; 
+                                                        const colors = ["bg-slate-400", "bg-blue-500", "bg-emerald-500", "bg-red-500"];
+                                                        return prob > 0.001 ? <div key={idx} className={`${colors[idx]} text-white flex items-center justify-center truncate transition-all duration-500`} style={{ width: `${prob * 100}%` }}>{(prob * 100) > 15 && name}</div> : null;
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="flex justify-end gap-2 text-[9px] text-slate-400 mt-3 pt-2 border-t border-slate-100">
+                                        <span className="flex items-center"><span className="w-2 h-2 bg-slate-400 rounded-full mr-1"></span>通常</span>
+                                        <span className="flex items-center"><span className="w-2 h-2 bg-blue-500 rounded-full mr-1"></span>高確A</span>
+                                        <span className="flex items-center"><span className="w-2 h-2 bg-emerald-500 rounded-full mr-1"></span>高確B</span>
+                                        <span className="flex items-center"><span className="w-2 h-2 bg-red-500 rounded-full mr-1"></span>超高確</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">設定示唆絞り込み</h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[['set2', '設定2以上'], ['set3', '設定3以上'], ['set4', '設定4以上'], ['set5', '設定5以上']].map(([key, label]) => (
+                                            <button key={key} onClick={() => setCounters(p => ({...p, suggestions: {...p.suggestions, [key]: !p.suggestions[key] }}))} className={`p-3 text-xs font-bold rounded-lg border transition-all shadow-sm ${counters.suggestions[key] ? 'bg-pink-50 border-pink-400 text-pink-600' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">AT終了画面 (メモ)</h3>
+                                    <div className="grid grid-cols-6 gap-2 text-center">
+                                        <div className="col-span-6 bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-24 relative overflow-hidden group hover:border-slate-300">
+                                            <div className="absolute top-2 left-3 text-sm font-bold text-slate-500">デフォルト</div>
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-4xl font-bold text-slate-800 font-mono">{counters.atScreens.default}</div>
+                                            <button onClick={() => updateCounter('default', 1)} className="absolute inset-0 w-full h-full z-10 active:bg-slate-50/50"></button>
+                                            <button onClick={(e) => { e.stopPropagation(); updateCounter('default', -1); }} className="absolute bottom-2 left-2 w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-400 rounded-full z-20 text-lg font-bold shadow-sm">-</button>
+                                        </div>
+                                        {[{k:'highWeak',l:'高設定(弱)',c:'text-blue-500',w:3},{k:'highStrong',l:'高設定(強)',c:'text-pink-500',w:3},{k:'ka',l:'可(2+)',c:'text-cyan-600',w:2},{k:'kichi',l:'吉(3+)',c:'text-emerald-600',w:2},{k:'ryo',l:'良(4+)',c:'text-red-600',w:2},{k:'yu',l:'優(5+)',c:'text-silver',w:3},{k:'kiwami',l:'極(6確)',c:'text-gold',w:3}].map(o=>(
+                                            <div key={o.k} className={`col-span-${o.w} bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between ${o.w===3?'h-20':'h-16'} relative hover:border-slate-300`}>
+                                                <div className={`absolute top-1 left-2 text-[10px] font-bold ${o.c}`}>{o.l}</div>
+                                                <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xl font-bold text-slate-700 font-mono">{counters.atScreens[o.k]}</div>
+                                                <button onClick={() => updateCounter(o.k, 1)} className="absolute inset-0 z-10"></button>
+                                                <button onClick={(e) => { e.stopPropagation(); updateCounter(o.k, -1); }} className="absolute bottom-1 left-2 w-5 h-5 flex items-center justify-center bg-slate-100 text-slate-400 rounded-full z-20 text-[10px]">-</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button onClick={resetAll} className="w-full py-4 mt-6 text-red-500 border border-red-100 bg-red-50/50 rounded-xl hover:bg-red-50 text-xs font-bold">全データをリセット</button>
+                            </div>
+                        )}
+                    </div>
+                    {/* Fixed Footer */}
+                    <div className="bg-white border-t border-slate-200 flex fixed bottom-0 w-full max-w-md z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                        <button onClick={() => setActiveTab('main')} className={`flex-1 py-4 text-center font-bold text-xs transition-colors relative ${activeTab === 'main' ? 'text-blue-600' : 'text-slate-400'}`}>
+                            <span className="text-lg block mb-0.5">⏱</span>タイムライン{activeTab === 'main' && <div className="absolute top-0 left-0 w-full h-0.5 bg-blue-500"></div>}
+                        </button>
+                        <button onClick={() => setActiveTab('counter')} className={`flex-1 py-4 text-center font-bold text-xs transition-colors relative ${activeTab === 'counter' ? 'text-blue-600' : 'text-slate-400'}`}>
+                            <span className="text-lg block mb-0.5">📊</span>判別・分析{activeTab === 'counter' && <div className="absolute top-0 left-0 w-full h-0.5 bg-blue-500"></div>}
+                        </button>
+                    </div>
+                    
+                    {/* Data Modal */}
+                    {showDataModal && (
+                        <div className="absolute inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5">
+                                <h3 className="text-lg font-bold text-slate-800 text-center">データ管理</h3>
+                                <div className="space-y-3">
+                                    <button onClick={copyToClipboard} className="w-full p-4 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 text-sm shadow-lg shadow-slate-200 transition-all active:scale-95 flex items-center justify-center gap-2"><span>📤</span> 保存 (コピー)</button>
+                                </div>
+                                <div className="border-t border-slate-100 pt-5 space-y-3">
+                                    <textarea className="w-full border border-slate-200 bg-slate-50 rounded-xl p-3 text-xs h-24 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all" placeholder='ここに保存したデータを貼り付け...' value={importText} onChange={(e) => setImportText(e.target.value)}></textarea>
+                                    <button onClick={importData} className="w-full p-4 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600 text-sm shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-2"><span>📥</span> 読込 (再開)</button>
+                                </div>
+                                <button onClick={() => setShowDataModal(false)} className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-bold">キャンセル</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+

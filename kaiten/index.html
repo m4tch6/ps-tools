@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#fafaf7">
+<title>回転率メーター</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<style>
+  :root{
+    --bg:#fafaf7; --panel:#ffffff; --panel-hi:#f4f4ef; --line:#e3e2dc; --line-soft:#ecebe4;
+    --ink:#14181d; --muted:#5c6570; --faint:#9aa1a9;
+    --accent:#0f7a68;
+    --calibA:#2b8fbf; --calibB:#c98a1a; --start:#c94d84; --end:#0f7a68;
+    --plus:#0f7a68; --minus:#c94336;
+    --r-lg:16px; --r-md:12px; --r-sm:8px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    font-feature-settings:"palt";}
+  body{max-width:520px; margin:0 auto; padding:0 14px 150px;}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-variant-numeric:tabular-nums;}
+  button{font-family:inherit; cursor:pointer;}
+
+  /* ---------- header ---------- */
+  header{display:flex; align-items:baseline; justify-content:space-between;
+    padding:20px 2px 16px;}
+  .brand{font-size:14px; font-weight:700; letter-spacing:.24em;}
+  .brand em{font-style:normal; color:var(--accent);}
+  .brand-sub{font-size:10px; letter-spacing:.16em; color:var(--faint);}
+
+  /* ---------- bottom nav ---------- */
+  .navbar{position:fixed; left:0; right:0; bottom:0; z-index:30;
+    display:flex; gap:8px; justify-content:center; max-width:520px; margin:0 auto;
+    padding:8px 14px calc(9px + env(safe-area-inset-bottom));
+    background:rgba(250,250,247,.94); -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+    border-top:1px solid var(--line-soft);}
+  .navbtn{flex:1; max-width:190px; display:flex; align-items:center; justify-content:center; gap:7px;
+    font-size:12px; letter-spacing:.1em; color:var(--faint);
+    background:none; border:1px solid transparent; border-radius:999px; padding:10px 0;
+    transition:color .15s, background .15s;}
+  .navbtn.on{color:var(--accent); background:var(--panel); border-color:var(--line);}
+  .navbtn svg{opacity:.85;}
+
+  /* ---------- upload ---------- */
+  .drop{display:block; border:1px dashed var(--line); border-radius:var(--r-lg); padding:44px 18px;
+    text-align:center; background:
+      radial-gradient(320px 140px at 50% 0%, rgba(15,122,104,.06), transparent 70%), var(--panel);
+    cursor:pointer; transition:border-color .2s;}
+  .drop:active{border-color:var(--accent);}
+  .drop .ic{width:40px; height:40px; margin:0 auto 12px; border-radius:12px;
+    border:1px solid var(--line); display:flex; align-items:center; justify-content:center;
+    color:var(--accent); background:var(--panel-hi);}
+  .drop b{display:block; font-size:14px; font-weight:600; letter-spacing:.04em;}
+  .drop small{display:block; margin-top:6px; font-size:11px; color:var(--faint); line-height:1.6;}
+
+  /* ---------- stage ---------- */
+  .stage-wrap{display:none;}
+  .stage{position:relative; border-radius:var(--r-lg); overflow:hidden; background:#efefe9;
+    border:1px solid var(--line); box-shadow:0 6px 24px -18px rgba(20,24,29,.35);}
+  canvas{display:block; width:100%; touch-action:none;}
+  .stage-tools{display:flex; gap:8px; margin-top:10px;}
+  .tool-btn{flex:1; display:flex; align-items:center; justify-content:center; gap:7px;
+    background:var(--panel); color:var(--muted); border:1px solid var(--line);
+    border-radius:var(--r-md); padding:10px 8px; font-size:11.5px; letter-spacing:.05em;
+    transition:color .15s, background .15s;}
+  .tool-btn:active{background:var(--panel-hi); color:var(--ink);}
+  .tool-btn svg{opacity:.7;}
+
+  /* ---------- cards ---------- */
+  .card{background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--r-lg);
+    padding:14px 14px 15px; margin-top:12px;}
+  .card-head{display:flex; align-items:center; gap:9px; margin-bottom:12px;}
+  .stepnum{width:20px; height:20px; border-radius:6px; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    font-size:10.5px; font-weight:700; color:var(--faint);
+    border:1px solid var(--line); background:var(--panel-hi);
+    transition:all .3s;}
+  .card.done .stepnum{color:#08110d; background:var(--accent); border-color:var(--accent);}
+  .card-title{font-size:12px; font-weight:600; letter-spacing:.06em;}
+  .card-note{font-size:10px; color:var(--faint); letter-spacing:.02em; margin-left:auto;}
+
+  .rowset{display:flex; gap:10px;}
+  .field{flex:1; min-width:0;}
+  .field label{display:flex; align-items:center; gap:6px; font-size:10.5px;
+    color:var(--muted); letter-spacing:.04em; margin-bottom:6px;}
+  .dot{width:8px; height:8px; border-radius:3px; flex:none;}
+  .inwrap{display:flex; align-items:center; background:#fbfbf8; border:1px solid var(--line);
+    border-radius:var(--r-md); transition:border-color .15s, box-shadow .15s; overflow:hidden;}
+  .inwrap:focus-within{border-color:var(--accent); box-shadow:0 0 0 3px rgba(15,122,104,.12);}
+  .inwrap input{flex:1; min-width:0; background:none; border:none; outline:none;
+    color:var(--ink); font-size:16px; padding:10px 4px 10px 12px;}
+  .inwrap input:disabled{color:var(--faint);}
+  .inwrap .unit{font-size:10.5px; color:var(--faint); padding-right:11px; letter-spacing:.04em; flex:none;}
+  .hint{font-size:10.5px; color:var(--faint); line-height:1.7; margin:10px 0 0;}
+  .hint b{color:var(--muted); font-weight:600;}
+
+  /* lock button */
+  .lock-btn{margin-top:12px; width:100%; display:flex; align-items:center; justify-content:center; gap:7px;
+    background:var(--panel-hi); color:var(--muted); border:1px solid var(--line);
+    border-radius:var(--r-md); padding:11px; font-size:11.5px; letter-spacing:.06em;
+    transition:background .2s, color .2s;}
+  .lock-btn.on{background:var(--accent); color:#eafff9; border-color:var(--accent);}
+
+  /* save button */
+  .save-btn{margin-top:13px; width:100%; background:var(--accent); color:#eafff9; border:none;
+    border-radius:var(--r-md); padding:13px; font-size:12.5px; font-weight:600; letter-spacing:.08em;
+    transition:background .2s;}
+  .save-btn:disabled{background:var(--line); color:var(--faint);}
+  .save-btn.saved{background:var(--plus);}
+
+  /* readout rows */
+  .reads{border:1px solid var(--line-soft); border-radius:var(--r-md); overflow:hidden; background:#fbfbf8;}
+  .read{display:flex; justify-content:space-between; align-items:baseline;
+    padding:9px 12px;}
+  .read + .read{border-top:1px solid var(--line-soft);}
+  .read .k{font-size:11px; color:var(--muted); display:flex; align-items:center; gap:7px; letter-spacing:.03em;}
+  .read .v{font-size:15px; letter-spacing:.02em;}
+  .read.em{background:linear-gradient(90deg, rgba(15,122,104,.07), transparent);}
+  .read.em .k{color:var(--ink);}
+  .read.em .v{font-size:17px; color:var(--accent);}
+
+  /* ---------- floating result ---------- */
+  .resbar{position:fixed; left:0; right:0; bottom:calc(56px + env(safe-area-inset-bottom)); z-index:20;
+    padding:10px 14px 6px;
+    background:linear-gradient(180deg, rgba(250,250,247,0), rgba(250,250,247,.95) 30%);
+    pointer-events:none;}
+  .res{max-width:492px; margin:0 auto; pointer-events:auto;
+    background:#ffffff;
+    border:1px solid var(--line); border-radius:var(--r-lg);
+    box-shadow:0 12px 32px -14px rgba(20,24,29,.22), 0 1px 0 rgba(20,24,29,.02);
+    padding:12px 16px 13px; display:flex; align-items:center; gap:16px;}
+  .res .lbl{font-size:9.5px; letter-spacing:.2em; color:var(--faint); white-space:nowrap;}
+  .res .num{font-size:34px; line-height:1; letter-spacing:-.01em; color:var(--ink);
+    white-space:nowrap;}
+  .res .num small{font-size:11px; color:var(--faint); letter-spacing:.05em; margin-left:4px;}
+  .res .right{margin-left:auto; text-align:right; min-width:0;}
+  .gauge{width:110px; height:3px; border-radius:3px; background:var(--line); position:relative;
+    margin:0 0 6px auto; overflow:hidden;}
+  .gauge i{position:absolute; inset:0; transform-origin:left; transform:scaleX(0);
+    background:var(--accent); transition:transform .35s ease, background .35s; border-radius:3px;}
+  .delta{font-size:11px; letter-spacing:.03em; color:var(--faint); white-space:nowrap;}
+  .delta.plus{color:var(--plus);} .delta.minus{color:var(--minus);}
+
+  /* ---------- details ---------- */
+  details{margin-top:14px; border:1px solid var(--line-soft); border-radius:var(--r-md); background:var(--panel);}
+  summary{list-style:none; padding:11px 13px; font-size:11px; color:var(--muted);
+    letter-spacing:.05em; cursor:pointer; display:flex; align-items:center; gap:8px;}
+  summary::-webkit-details-marker{display:none;}
+  summary .chev{margin-left:auto; transition:transform .2s; color:var(--faint);}
+  details[open] summary .chev{transform:rotate(180deg);}
+  details[open] summary{border-bottom:1px solid var(--line-soft);}
+  details .body{padding:12px 14px 13px; font-size:11.5px; color:var(--muted); line-height:1.75;}
+  details .body b{color:var(--ink); font-weight:600;}
+  details .formula{display:block; text-align:center; padding:9px 6px; margin:4px 0 10px;
+    background:#fbfbf8; border:1px solid var(--line-soft); border-radius:var(--r-sm);
+    color:var(--accent); font-size:12px; letter-spacing:.05em;}
+
+  /* ---------- record log ---------- */
+  .log-head{display:flex; align-items:center; justify-content:space-between; padding:16px 2px 12px;}
+  .log-title{font-size:13px; font-weight:700; letter-spacing:.12em;}
+  .log-actions{display:flex; gap:6px;}
+  .mini-btn{font-size:10.5px; letter-spacing:.05em; color:var(--muted); background:var(--panel);
+    border:1px solid var(--line); border-radius:8px; padding:8px 11px;}
+  .mini-btn:active{background:var(--panel-hi);}
+  .mini-btn.danger{color:var(--minus);}
+  .rec{display:flex; align-items:center; gap:12px; background:var(--panel);
+    border:1px solid var(--line-soft); border-radius:var(--r-md); padding:12px 14px; margin-bottom:8px;}
+  .rec .dai{min-width:70px;}
+  .rec .dai .lb{font-size:9.5px; color:var(--faint); letter-spacing:.06em;}
+  .rec .dai b{display:block; color:var(--ink); font-size:15px; letter-spacing:.02em;}
+  .rec .ts{font-size:9.5px; color:var(--faint); letter-spacing:.03em; margin-top:3px;}
+  .rec .rate{margin-left:auto; text-align:right;}
+  .rec .rate .n{font-size:20px; color:var(--accent); letter-spacing:.01em;}
+  .rec .rate .n small{font-size:10px; color:var(--faint); margin-left:3px;}
+  .rec .rate .d{font-size:10px; letter-spacing:.02em; margin-top:2px;}
+  .rec .rate .d.plus{color:var(--plus);} .rec .rate .d.minus{color:var(--minus);}
+  .rec .del{flex:none; width:30px; height:30px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel-hi); color:var(--faint); font-size:13px; line-height:1;
+    display:flex; align-items:center; justify-content:center;}
+  .rec .del:active{color:var(--minus);}
+  .empty{text-align:center; color:var(--faint); font-size:11.5px; padding:56px 0; line-height:1.8;}
+  .log-sum{font-size:10.5px; color:var(--faint); letter-spacing:.05em; padding:2px 2px 12px;}
+
+  .hide{display:none !important;}
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important;} }
+</style>
+</head>
+<body>
+<style>
+  .portal-back{display:flex;align-items:center;gap:6px;padding:11px 14px;
+    font:500 13px/1 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;text-decoration:none;}
+  .portal-back:active{background:#f1f5f9;}
+</style>
+<a class="portal-back" href="../">← ツール一覧</a>
+
+<header>
+  <div class="brand">回転率計算<em>ツール</em></div>
+</header>
+
+<!-- ============ CALC VIEW ============ -->
+<div id="viewCalc">
+
+  <label class="drop" id="drop">
+    <span class="ic">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 15l5-5 5 5 3-3 5 5"/><circle cx="15" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg>
+    </span>
+    <b>スランプグラフを読み込む</b>
+    <small>台のグラフをスクショして選択<br>画像は端末内で処理されます</small>
+    <input id="file" type="file" accept="image/*" hidden>
+  </label>
+
+  <div class="stage-wrap" id="stageWrap">
+    <div class="stage" id="stage"><canvas id="cv"></canvas></div>
+    <div class="stage-tools">
+      <button class="tool-btn" id="reupload">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 3v6h-6"/></svg>
+        画像を替える
+      </button>
+      <button class="tool-btn" id="reset">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4.5"/></svg>
+        マーカー初期化
+      </button>
+    </div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="card" id="c1">
+    <div class="card-head">
+      <span class="stepnum">1</span>
+      <span class="card-title">縦軸の較正</span>
+      <span class="card-note">目盛り2本を合わせる</span>
+    </div>
+    <div class="rowset">
+      <div class="field">
+        <label><span class="dot" style="background:var(--calibA)"></span>基準A の玉数</label>
+        <div class="inwrap"><input class="mono" id="valA" inputmode="numeric" value="0"><span class="unit">玉</span></div>
+      </div>
+      <div class="field">
+        <label><span class="dot" style="background:var(--calibB)"></span>基準B の玉数</label>
+        <div class="inwrap"><input class="mono" id="valB" inputmode="numeric" value="30000"><span class="unit">玉</span></div>
+      </div>
+    </div>
+    <p class="hint"><b>水色A・黄色B</b> の線をグラフの目盛り線へ合わせ、その値を入力。線は<b>上下だけ</b>に動きます。合わせ終えたらロックすると、区間マーカー操作中に動きません。</p>
+    <button class="lock-btn" id="lockBtn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      <span>基準A・Bをロック</span>
+    </button>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="card" id="c2">
+    <div class="card-head">
+      <span class="stepnum">2</span>
+      <span class="card-title">区間を抜き出す</span>
+      <span class="card-note">直線区間の両端を置く</span>
+    </div>
+    <div class="reads">
+      <div class="read"><span class="k"><span class="dot" style="background:var(--start)"></span>始点</span><span class="v mono" id="oVA">–</span></div>
+      <div class="read"><span class="k"><span class="dot" style="background:var(--end)"></span>終点</span><span class="v mono" id="oVB">–</span></div>
+      <div class="read"><span class="k">区間差玉</span><span class="v mono" id="oSabi">–</span></div>
+      <div class="read em"><span class="k">消費玉数</span><span class="v mono" id="oCons">–</span></div>
+    </div>
+    <p class="hint">通常時の下り勾配など<b>まっすぐな区間</b>の両端に横線を合わせます。ドラッグで<b>上下＝高さ・左右＝丸印（拡大鏡）の位置</b>を調整でき、計算に使うのは縦方向の距離のみです。</p>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="card" id="c3">
+    <div class="card-head">
+      <span class="stepnum">3</span>
+      <span class="card-title">回転数を入力</span>
+    </div>
+    <div class="rowset">
+      <div class="field">
+        <label>区間の回転数</label>
+        <div class="inwrap"><input class="mono" id="rot" inputmode="numeric" placeholder="340"><span class="unit">回</span></div>
+      </div>
+      <div class="field">
+        <label>ボーダー <span style="color:var(--faint)">(任意)</span></label>
+        <div class="inwrap"><input class="mono" id="border" inputmode="decimal" placeholder="18.5"><span class="unit">回/千円</span></div>
+      </div>
+    </div>
+    <div class="rowset" style="margin-top:10px">
+      <div class="field">
+        <label>台番号 <span style="color:var(--faint)">(任意・記録用)</span></label>
+        <div class="inwrap"><input class="mono" id="daiban" inputmode="numeric" placeholder="123"><span class="unit">番</span></div>
+      </div>
+    </div>
+    <button class="save-btn" id="saveRec" disabled>この結果を記録する</button>
+  </div>
+
+  <details id="help">
+    <summary>
+      計算の考え方と誤差について
+      <span class="chev"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></span>
+    </summary>
+    <div class="body">
+      <span class="formula mono">回転率 = 回転数 × 250 ÷ 消費玉数</span>
+      消費玉数は較正した縦軸スケールで測った<b>区間差玉の絶対値</b>、250玉は4円パチンコの千円分です。<br><br>
+      スランプグラフの差玉は<b>純増（投資 − 払戻）</b>のため、厳密な打ち込み玉数とはヘソ賞球などの分だけずれます。通常時の下り区間を<b>長めに</b>取るほど誤差は小さくなります。あくまで概算としてお使いください。
+    </div>
+  </details>
+
+  <!-- floating result -->
+  <div class="resbar" id="resbar">
+    <div class="res">
+      <div>
+        <div class="lbl">回転率 / 250玉</div>
+        <div class="num mono" id="rate">–<small>回</small></div>
+      </div>
+      <div class="right">
+        <div class="gauge"><i id="gaugeFill"></i></div>
+        <div class="delta" id="delta">計測待ち</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /viewCalc -->
+
+<!-- ============ LOG VIEW ============ -->
+<div id="viewLog" class="hide">
+  <div class="log-head">
+    <div class="log-title">記録一覧</div>
+    <div class="log-actions">
+      <button class="mini-btn" id="exportCsv">CSV書き出し</button>
+      <button class="mini-btn danger" id="clearAll">全削除</button>
+    </div>
+  </div>
+  <div class="log-sum" id="logSum"></div>
+  <div id="recList"></div>
+  <p class="empty hide" id="recEmpty">まだ記録がありません。<br>「計測」タブで回転率を出し、<br>「この結果を記録する」を押すと保存されます。</p>
+</div>
+
+<!-- ============ BOTTOM NAV (fixed) ============ -->
+<nav class="navbar">
+  <button class="navbtn on" data-v="calc">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+    計測
+  </button>
+  <button class="navbtn" data-v="log">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>
+    記録
+  </button>
+</nav>
+
+<script>
+(function(){
+"use strict";
+var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+var stage=document.getElementById("stage");
+var img=null, imgData=null, dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1));
+var cw=0, ch=0, scale=1;
+var calib=[{y:0,v:0},{y:0,v:30000}];
+var meas=[{x:0,y:0},{x:0,y:0}];
+var drag=null;
+var locked=false;   // 基準A・Bのロック状態
+var loaded=false;   // 1枚目を読み込んだか（差し替え判定）
+var lastRate=null, lastDelta=null;
+
+var COL={A:"#2b8fbf",B:"#c98a1a",S:"#c94d84",E:"#0f7a68"};
+var els={}; ["valA","valB","rot","border","oVA","oVB","oSabi","oCons","rate","delta","gaugeFill"]
+  .forEach(function(id){els[id]=document.getElementById(id);});
+function g(id){return document.getElementById(id);}
+
+/* ---------- 作業中セッションの自動保存 ----------
+   スマホでタブが裏に回って破棄されても、画像・基準線・入力値が消えないよう
+   localStorage に保持する。画像は長辺1200pxのJPEGに縮小してから保存。 */
+var SESS="kaiten_session_v1";
+function toDataURL(im){
+  var max=1200, w=im.width, h=im.height;
+  if(w>max){ h=Math.round(h*max/w); w=max; }
+  var c=document.createElement("canvas"); c.width=w; c.height=h;
+  c.getContext("2d").drawImage(im,0,0,w,h);
+  try{ return c.toDataURL("image/jpeg",0.82); }catch(_){ return null; }
+}
+function saveSession(){
+  if(!loaded||!imgData||!ch||!cw) return;
+  try{
+    localStorage.setItem(SESS,JSON.stringify({
+      imgData:imgData, locked:locked,
+      calib:[calib[0].y/ch, calib[1].y/ch],
+      meas:[[meas[0].x/cw, meas[0].y/ch],[meas[1].x/cw, meas[1].y/ch]],
+      valA:els.valA.value, valB:els.valB.value,
+      rot:els.rot.value, border:els.border.value, daiban:g("daiban").value
+    }));
+  }catch(_){}   // 容量超過時は黙って諦める（記録タブのデータは別キーで無事）
+}
+function clearSession(){ try{localStorage.removeItem(SESS);}catch(_){} }
+
+/* ---------- load ---------- */
+// #drop is a <label> wrapping #file, so the native label activation opens the
+// picker on its own — no extra click handler here (would double-open the dialog).
+g("reupload").addEventListener("click",function(){g("file").click();});
+g("file").addEventListener("change",function(e){
+  var f=e.target.files&&e.target.files[0]; if(!f)return;
+  var url=URL.createObjectURL(f), im=new Image();
+  im.onload=function(){
+    var fresh=!loaded; loaded=true; img=im; imgData=toDataURL(im);
+    reveal();
+    // 差し替え時(fresh=false)は基準A・B/マーカー位置を相対的に引き継ぐ
+    layout(fresh);
+    URL.revokeObjectURL(url);
+    saveSession();
+  };
+  im.src=url;
+});
+function reveal(){
+  // カード類は常時表示。画像読込時はアップロード枠→グラフへ差し替えるだけ
+  g("drop").classList.add("hide");
+  g("stageWrap").style.display="block";
+}
+
+/* ---------- layout ---------- */
+function layout(fresh){
+  if(!img)return;
+  var prevW=cw, prevH=ch;
+  cw=stage.clientWidth; scale=cw/img.width; ch=img.height*scale;
+  cv.style.height=ch+"px";
+  cv.width=Math.round(cw*dpr); cv.height=Math.round(ch*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(fresh){
+    calib[0].y=ch*0.72; calib[1].y=ch*0.28;   // A(=0)を下、B(=30000)を上に → 上ほどプラスの自然な向き
+    meas[0]={x:cw*0.40,y:ch*0.35}; meas[1]={x:cw*0.60,y:ch*0.65};
+  }else if(prevW&&prevH){
+    var kx=cw/prevW, ky=ch/prevH;
+    calib.forEach(function(c){c.y*=ky;});
+    meas.forEach(function(m){m.x*=kx; m.y*=ky;});
+  }
+  draw(); compute();
+}
+var rt; window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){layout(false);},120);});
+
+/* ---------- draw ---------- */
+function draw(){
+  if(!img)return;
+  ctx.clearRect(0,0,cw,ch);
+  ctx.drawImage(img,0,0,cw,ch);
+
+  // 区間の帯（始点〜終点の間を薄く塗って範囲を可視化）
+  var yb0=Math.min(meas[0].y,meas[1].y), yb1=Math.max(meas[0].y,meas[1].y);
+  if(yb1-yb0>0.5){ ctx.save(); ctx.fillStyle="rgba(20,24,29,.055)"; ctx.fillRect(0,yb0,cw,yb1-yb0); ctx.restore(); }
+
+  // 基準A・B（点線・控えめ）
+  hline(calib[0].y,COL.A,"A "+fmt(numA()),locked);
+  hline(calib[1].y,COL.B,"B "+fmt(numB()),locked);
+
+  // 始点・終点（実線・太め・濃い色＝A/Bより見やすく）
+  measLine(meas[0],COL.S,"始");
+  measLine(meas[1],COL.E,"終");
+
+  if(drag) loupe();
+}
+function hline(y,col,label,lock){
+  ctx.save();
+  ctx.strokeStyle=col; ctx.lineWidth=1.25; ctx.setLineDash([6,5]); ctx.globalAlpha=.95;
+  ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cw,y); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha=1;
+  // grip handle (right)
+  ctx.fillStyle="rgba(255,255,255,.94)"; roundRect(cw-34,y-11,28,22,7); ctx.fill();
+  ctx.strokeStyle=col; ctx.lineWidth=1.25; roundRect(cw-34,y-11,28,22,7); ctx.stroke();
+  ctx.fillStyle=col;
+  if(lock){
+    // padlock glyph → 基準が固定されていることを示す
+    ctx.fillRect(cw-25,y-1,10,7);
+    ctx.beginPath(); ctx.arc(cw-20,y-2.5,3,Math.PI,0); ctx.lineWidth=1.4; ctx.strokeStyle=col; ctx.stroke();
+  }else{
+    ctx.fillRect(cw-27,y-3.5,14,1.5); ctx.fillRect(cw-27,y+2,14,1.5);
+  }
+  // label pill (left)
+  ctx.font="600 10.5px ui-monospace,Menlo,monospace";
+  var w=ctx.measureText(label).width+14;
+  ctx.fillStyle="rgba(255,255,255,.92)"; roundRect(6,y-10,w,20,6); ctx.fill();
+  ctx.strokeStyle=col; ctx.globalAlpha=.5; roundRect(6,y-10,w,20,6); ctx.stroke(); ctx.globalAlpha=1;
+  ctx.fillStyle=col; ctx.textBaseline="middle"; ctx.fillText(label,13,y+1);
+  ctx.restore();
+}
+function measLine(p,col,txt){
+  var y=p.y;
+  ctx.save();
+  // 全幅の実線 — A/Bの点線より太く濃くして見やすく
+  ctx.strokeStyle="rgba(255,255,255,.6)"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cw,y); ctx.stroke();   // 白フチ(暗い背景でも視認)
+  ctx.strokeStyle=col; ctx.lineWidth=1.7;
+  ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cw,y); ctx.stroke();
+  // フォーカス点（左右に動かせる＝拡大鏡の中心）
+  ctx.beginPath(); ctx.arc(p.x,y,5.5,0,7); ctx.fillStyle=col; ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.stroke();
+  // 塗りつぶしラベル（始/終）— A/Bの白ラベルより主張させる
+  ctx.font="700 11px system-ui";
+  var w=ctx.measureText(txt).width+16;
+  var tx=clamp(p.x, w/2+2, cw-w/2-2);
+  var ty=(y<30) ? y+8 : y-8-19;
+  ctx.fillStyle=col; roundRect(tx-w/2,ty,w,19,6); ctx.fill();
+  ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(txt,tx,ty+10);
+  ctx.textAlign="left"; ctx.restore();
+}
+function loupe(){
+  var p = drag.type==="calib" ? {x:cw*0.5,y:calib[drag.i].y} : meas[drag.i];
+  var R=58, Z=3.6;
+  var lx=clamp(p.x,R+8,cw-R-8);
+  var ly = p.y<ch/2 ? ch-R-12 : R+12;
+  var srcHalf=(R/Z)/scale, sx=p.x/scale, sy=p.y/scale;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(lx,ly,R,0,7); ctx.closePath();
+  ctx.fillStyle="#e9e9e3"; ctx.fill(); ctx.clip();
+  // draw only the part of the sample box that lies inside the image, mapped 1:1 in
+  // scale — keeps the crosshair on the true point and avoids stretching near edges
+  var bx=sx-srcHalf, by=sy-srcHalf, size=srcHalf*2, m=(R*2)/size;
+  var ix0=Math.max(0,bx), iy0=Math.max(0,by);
+  var ix1=Math.min(img.width,bx+size), iy1=Math.min(img.height,by+size);
+  if(ix1>ix0 && iy1>iy0){
+    ctx.drawImage(img, ix0,iy0, ix1-ix0, iy1-iy0,
+      lx-R+(ix0-bx)*m, ly-R+(iy0-by)*m, (ix1-ix0)*m, (iy1-iy0)*m);
+  }
+  ctx.strokeStyle="rgba(20,24,29,.55)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(lx-R,ly); ctx.lineTo(lx+R,ly); ctx.moveTo(lx,ly-R); ctx.lineTo(lx,ly+R); ctx.stroke();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(lx,ly,R,0,7); ctx.lineWidth=1.5; ctx.strokeStyle="rgba(20,24,29,.35)"; ctx.stroke();
+  var val=valueAt(p.y);
+  if(val!=null){
+    ctx.font="700 12px ui-monospace,Menlo,monospace";
+    var t=fmt(Math.round(val))+" 玉";
+    var w=ctx.measureText(t).width+14;
+    ctx.fillStyle="rgba(255,255,255,.95)"; roundRect(lx-w/2,ly+R-22,w,18,6); ctx.fill();
+    ctx.strokeStyle="rgba(20,24,29,.2)"; ctx.lineWidth=1; roundRect(lx-w/2,ly+R-22,w,18,6); ctx.stroke();
+    ctx.fillStyle="#14181d"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(t,lx,ly+R-12); ctx.textAlign="left";
+  }
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+/* ---------- interaction (縦方向のみ) ---------- */
+// 始点/終点マーカーと(ロック外なら)基準A/Bのうち、タップ位置に縦方向で最も近いものを掴む。
+// ドラッグは上下のみ — 横位置は固定で、合わせやすさを優先。
+cv.addEventListener("pointerdown",function(e){
+  var p=pos(e);
+  var cands=[{type:"meas",i:0,y:meas[0].y},{type:"meas",i:1,y:meas[1].y}];
+  if(!locked){ cands.push({type:"calib",i:0,y:calib[0].y}); cands.push({type:"calib",i:1,y:calib[1].y}); }
+  var best=null,bd=44;
+  cands.forEach(function(c){var d=Math.abs(p.y-c.y); if(d<bd){bd=d;best=c;}});
+  if(best){ drag={type:best.type,i:best.i}; try{cv.setPointerCapture(e.pointerId);}catch(_){} draw(); }
+});
+cv.addEventListener("pointermove",function(e){
+  if(!drag)return; e.preventDefault(); var p=pos(e);
+  if(drag.type==="calib"){ calib[drag.i].y=clamp(p.y,0,ch); }
+  else{ meas[drag.i].x=clamp(p.x,0,cw); meas[drag.i].y=clamp(p.y,0,ch); }   // 縦横とも移動（丸印＝拡大鏡の位置）
+  draw(); compute();
+},{passive:false});
+function endDrag(){ if(drag){drag=null; draw(); saveSession();} }
+cv.addEventListener("pointerup",endDrag);
+cv.addEventListener("pointercancel",endDrag);
+
+function pos(e){var r=cv.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
+function clamp(v,a,b){return v<a?a:v>b?b:v;}
+function fmt(n){return (isFinite(n)?n:0).toLocaleString("ja-JP");}
+
+/* ---------- math ---------- */
+function numA(){var v=parseFloat(els.valA.value);return isFinite(v)?v:0;}
+function numB(){var v=parseFloat(els.valB.value);return isFinite(v)?v:0;}
+function valuePerPx(){var dy=calib[0].y-calib[1].y; if(Math.abs(dy)<1e-6)return null;
+  return (numA()-numB())/dy;}
+function valueAt(y){var k=valuePerPx(); if(k==null)return null; return numA()+(y-calib[0].y)*k;}
+
+function compute(){
+  var vA=valueAt(meas[0].y), vB=valueAt(meas[1].y);
+  var cons=null;
+  if(vA!=null&&vB!=null){
+    var sabi=vB-vA; cons=Math.abs(sabi);
+    els.oVA.textContent=fmt(Math.round(vA))+" 玉";
+    els.oVB.textContent=fmt(Math.round(vB))+" 玉";
+    els.oSabi.textContent=(sabi>=0?"+":"")+fmt(Math.round(sabi))+" 玉";
+    els.oCons.textContent=fmt(Math.round(cons))+" 玉";
+  }else{
+    els.oVA.textContent=els.oVB.textContent=els.oSabi.textContent=els.oCons.textContent="–";
+  }
+
+  var rot=parseFloat(els.rot.value);
+  var ok = cons>0 && rot>0;
+  var rate = ok ? rot*250/cons : null;
+  lastRate = rate;
+
+  if(rate!=null){
+    els.rate.innerHTML=rate.toFixed(1)+'<small>回</small>';
+  }else{
+    els.rate.innerHTML='–<small>回</small>';
+  }
+
+  var bd=parseFloat(els.border.value);
+  var fill=els.gaugeFill;
+  if(rate!=null&&isFinite(bd)&&bd>0){
+    var d=rate-bd; lastDelta=d;
+    els.delta.className="delta "+(d>=0?"plus":"minus");
+    els.delta.textContent=(d>=0?"ボーダー +":"ボーダー −")+Math.abs(d).toFixed(1)+" 回";
+    var ratio=clamp(rate/(bd*1.4),0,1);
+    fill.style.transform="scaleX("+ratio+")";
+    fill.style.background=d>=0?"var(--plus)":"var(--minus)";
+  }else if(rate!=null){
+    lastDelta=null;
+    els.delta.className="delta"; els.delta.textContent="ボーダー未入力";
+    fill.style.transform="scaleX(0)";
+  }else{
+    lastDelta=null;
+    els.delta.className="delta"; els.delta.textContent="計測待ち";
+    fill.style.transform="scaleX(0)";
+  }
+
+  var sb=g("saveRec");
+  if(sb){
+    sb.disabled=(rate==null);
+    if(!sb.classList.contains("saved")) sb.textContent="この結果を記録する";
+  }
+  steps(rate!=null);
+}
+
+/* ---------- card done states ---------- */
+function steps(hasRate){
+  var s1=!!img;
+  var s2=s1 && numA()!==numB();
+  var s3=s2 && Math.abs(meas[0].y-meas[1].y)>2;
+  g("c1").classList.toggle("done",s2);
+  g("c2").classList.toggle("done",s3);
+  g("c3").classList.toggle("done",hasRate);
+}
+
+["valA","valB","rot","border"].forEach(function(id){
+  els[id].addEventListener("input",function(){draw();compute();saveSession();});
+});
+g("daiban").addEventListener("input",saveSession);
+
+/* ---------- lock ---------- */
+function setLock(on){
+  locked=on;
+  var b=g("lockBtn");
+  b.classList.toggle("on",locked);
+  b.querySelector("span").textContent = locked ? "基準を解除する" : "基準A・Bをロック";
+  els.valA.disabled=locked; els.valB.disabled=locked;
+  draw();
+}
+g("lockBtn").addEventListener("click",function(){ setLock(!locked); saveSession(); });
+
+/* ---------- reset markers ---------- */
+g("reset").addEventListener("click",function(){
+  if(locked) setLock(false);
+  layout(true);
+  saveSession();
+});
+
+/* ================= records ================= */
+var LS="kaiten_records_v1";
+function loadRecs(){ try{return JSON.parse(localStorage.getItem(LS))||[];}catch(_){return [];} }
+function saveRecs(a){ try{localStorage.setItem(LS,JSON.stringify(a));}catch(_){} }
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function fmtTs(ts){var d=new Date(ts); function p(n){return (n<10?"0":"")+n;}
+  return d.getFullYear()+"/"+p(d.getMonth()+1)+"/"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());}
+
+function renderRecs(){
+  var a=loadRecs(), list=g("recList"); list.innerHTML="";
+  g("recEmpty").classList.toggle("hide", a.length>0);
+  g("logSum").textContent = a.length ? ("記録 "+a.length+" 件") : "";
+  a.forEach(function(r){
+    var row=document.createElement("div"); row.className="rec";
+    var dtxt = (r.delta==null) ? "" :
+      '<div class="d '+(r.delta>=0?"plus":"minus")+'">ボーダー'+(r.delta>=0?"+":"−")+Math.abs(r.delta).toFixed(1)+"</div>";
+    row.innerHTML=
+      '<div class="dai"><div class="lb">台番号</div><b>'+esc(r.dai||"—")+'</b><div class="ts">'+fmtTs(r.ts)+'</div></div>'+
+      '<div class="rate"><div class="n">'+r.rate.toFixed(1)+'<small>回</small></div>'+dtxt+'</div>'+
+      '<button class="del" data-id="'+r.id+'" aria-label="削除">✕</button>';
+    list.appendChild(row);
+  });
+}
+g("recList").addEventListener("click",function(e){
+  var b=e.target.closest(".del"); if(!b)return;
+  var id=b.getAttribute("data-id");
+  saveRecs(loadRecs().filter(function(r){return String(r.id)!==String(id);}));
+  renderRecs();
+});
+g("saveRec").addEventListener("click",function(){
+  if(lastRate==null)return;
+  var a=loadRecs();
+  a.unshift({
+    id:Date.now()+"_"+Math.random().toString(36).slice(2,6),
+    dai:(g("daiban").value||"").trim(),
+    rate:lastRate, delta:lastDelta, ts:Date.now()
+  });
+  saveRecs(a); renderRecs();
+  var b=this; b.classList.add("saved"); b.textContent="記録しました ✓";
+  setTimeout(function(){ b.classList.remove("saved"); b.textContent="この結果を記録する"; },1400);
+});
+g("clearAll").addEventListener("click",function(){
+  if(!loadRecs().length)return;
+  if(confirm("すべての記録を削除しますか？この操作は取り消せません。")){ saveRecs([]); renderRecs(); }
+});
+function csvCell(v){v=(v==null?"":String(v)); return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+g("exportCsv").addEventListener("click",function(){
+  var a=loadRecs(); if(!a.length){return;}
+  var rows=[["日時","台番号","回転率(回/250玉)","ボーダー差"]];
+  a.slice().reverse().forEach(function(r){
+    rows.push([fmtTs(r.ts), r.dai||"", r.rate.toFixed(1), r.delta==null?"":r.delta.toFixed(1)]);
+  });
+  var csv="﻿"+rows.map(function(r){return r.map(csvCell).join(",");}).join("\r\n");
+  var blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  var url=URL.createObjectURL(blob), a2=document.createElement("a");
+  a2.href=url; a2.download="回転率記録.csv"; document.body.appendChild(a2); a2.click();
+  document.body.removeChild(a2); setTimeout(function(){URL.revokeObjectURL(url);},1000);
+});
+
+/* ---------- view tabs (bottom nav) ---------- */
+document.querySelectorAll(".navbtn").forEach(function(t){
+  t.addEventListener("click",function(){
+    document.querySelectorAll(".navbtn").forEach(function(x){x.classList.remove("on");});
+    t.classList.add("on");
+    var v=t.getAttribute("data-v");
+    g("viewCalc").classList.toggle("hide", v!=="calc");
+    g("viewLog").classList.toggle("hide", v!=="log");
+    if(v==="log") renderRecs();
+    window.scrollTo(0,0);   // 切替時は先頭から表示
+  });
+});
+
+renderRecs();
+
+/* ---------- 前回の作業内容を復元 ---------- */
+(function restoreSession(){
+  var d; try{ d=JSON.parse(localStorage.getItem(SESS)); }catch(_){ return; }
+  if(!d||!d.imgData) return;
+  var im=new Image();
+  im.onload=function(){
+    img=im; loaded=true; imgData=d.imgData;
+    els.valA.value=d.valA; els.valB.value=d.valB;
+    els.rot.value=d.rot; els.border.value=d.border;
+    g("daiban").value=d.daiban||"";
+    reveal();
+    // layout(fresh) は基準線を初期位置に戻すため使わず、保存した相対位置を復元する
+    cw=stage.clientWidth; scale=cw/img.width; ch=img.height*scale;
+    cv.style.height=ch+"px";
+    cv.width=Math.round(cw*dpr); cv.height=Math.round(ch*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    calib[0].y=d.calib[0]*ch; calib[1].y=d.calib[1]*ch;
+    meas[0]={x:d.meas[0][0]*cw, y:d.meas[0][1]*ch};
+    meas[1]={x:d.meas[1][0]*cw, y:d.meas[1][1]*ch};
+    setLock(!!d.locked);
+    draw(); compute();
+  };
+  im.onerror=function(){ clearSession(); };
+  im.src=d.imgData;
+})();
+compute();
+})();
+</script>
+</body>
+</html>
