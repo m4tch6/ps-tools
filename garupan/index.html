@@ -2,11 +2,10 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ガルパン最終章 設定判別ツール</title>
-<link rel="manifest" href="../manifest.webmanifest">
-    
-    <!-- ファビコンとスマホ用アイコンの設定 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <title>ガルパン最終章 設定判別</title>
+    <link rel="manifest" href="../manifest.webmanifest">
     <link rel="icon" type="image/png" href="image.png">
     <link rel="apple-touch-icon" href="image.png">
 
@@ -14,30 +13,38 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="../tool.css">
     <style>
-        body { background-color: #f8fafc; color: #1e293b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
-        .btn-base { transition: all 0.1s ease-out; touch-action: manipulation; user-select: none; position: relative; z-index: 10; }
-        .btn-base:active:not(:disabled) { transform: scale(0.97); opacity: 0.9; }
-        .btn-base:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); z-index: 0; }
-        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
-        .text-gold { color: #d97706; }
-        .text-silver { color: #64748b; }
+        body { margin:0; -webkit-tap-highlight-color:transparent;
+          font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+          font-feature-settings:"palt"; }
+        .btn-base { transition: all 0.1s ease-out; touch-action: manipulation; user-select: none; }
+        .btn-base:active:not(:disabled) { transform: scale(0.98); }
+        .btn-base:disabled { opacity: 0.4; cursor: not-allowed; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body>
-<style>
-  .portal-back{display:flex;align-items:center;gap:6px;padding:11px 14px;
-    font:500 13px/1 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
-    color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;text-decoration:none;}
-  .portal-back:active{background:#f1f5f9;}
-</style>
 <a class="portal-back" href="../">← ツール一覧</a>
     <div id="root"></div>
 
     <script type="text/babel">
+        /* @jsxRuntime classic */
         const { useState, useEffect, useRef } = React;
+
+        /* --- アイコン（絵文字は使わず3ツール共通のSVGで統一） --- */
+        const Ico = ({ children, className }) => (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+            {children}
+          </svg>
+        );
+        const IconRecord = ({ className }) => <Ico className={className}><path d="M8 6h11"/><path d="M8 12h11"/><path d="M8 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/></Ico>;
+        const IconResult = ({ className }) => <Ico className={className}><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 15v-3"/><path d="M12 15V8"/><path d="M17 15v-5"/></Ico>;
+        const IconUndo = ({ className }) => <Ico className={className}><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></Ico>;
+        const IconRedo = ({ className }) => <Ico className={className}><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></Ico>;
+        const IconData = ({ className }) => <Ico className={className}><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M17 21v-7H7v7"/><path d="M7 3v5h8"/></Ico>;
 
         // --- Constants & Probability Tables ---
         const SETTINGS = [1, 2, 3, 4, 5, 6];
@@ -532,248 +539,271 @@
             const totalRewriteChance = 1.0 - (1.0 - simState.precursorRewriteChance) * (1.0 - simState.ceRewriteChance);
 
             return (
-                <div className="max-w-md mx-auto bg-slate-50 min-h-screen pb-24 font-sans text-slate-700">
-                    <div className="glass sticky top-0 z-50 shadow-sm">
-                        <div className="px-4 py-3">
-                            <h1 className="text-slate-800 font-extrabold text-lg text-center tracking-wider mb-2">ガルパン最終章 設定判別</h1>
-                            <div className="flex items-center justify-between bg-slate-100/80 rounded-xl p-1 border border-slate-200 shadow-inner">
-                                <div className={`flex-1 text-center py-1.5 rounded-lg text-xs font-bold transition-all ${!simState.isPrecursor && !simState.inCE ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}>通常</div>
-                                <div className="text-slate-300 px-1">›</div>
-                                <div className={`flex-1 text-center py-1.5 rounded-lg text-xs font-bold transition-all ${(simState.isPrecursor && !simState.inCE) ? (simState.isDondoko ? 'bg-purple-500 text-white shadow-md' : 'bg-blue-500 text-white shadow-md') : 'text-slate-400'}`}>
-                                    {simState.isDondoko ? "どん底(前兆)" : "前兆"}
-                                </div>
-                                <div className="text-slate-300 px-1">›</div>
-                                <div className={`flex-1 text-center py-1.5 rounded-lg text-xs font-bold transition-all ${simState.inCE ? (simState.isSecondCE ? 'bg-purple-600 text-white shadow-md' : 'bg-indigo-500 text-white shadow-md') : 'text-slate-400'}`}>
-                                    連演
-                                </div>
+                <div className="t-app">
+                    <header className="t-head">
+                        <div className="t-head-row">
+                            <h1 className="t-title">ガルパン最終章<span>設定判別</span></h1>
+                            <div className="flex gap-1.5">
+                                <button onClick={undo} disabled={history.length===0} className="t-iconbtn btn-base" aria-label="ひとつ戻す"><IconUndo className="w-4 h-4" /></button>
+                                <button onClick={redo} disabled={future.length===0} className="t-iconbtn btn-base" aria-label="ひとつ進める"><IconRedo className="w-4 h-4" /></button>
+                                <button onClick={() => setShowDataModal(true)} className="t-iconbtn btn-base" aria-label="データ管理"><IconData className="w-4 h-4" /></button>
                             </div>
-                            {(simState.isPrecursor || simState.inCE) && (
-                                <div className="mt-2 text-[10px] text-center font-mono py-0.5 rounded border bg-indigo-50 border-indigo-100 text-indigo-600 font-bold">
-                                    書き換え期待度: <span className="text-lg mx-1">{(totalRewriteChance * 100).toFixed(1)}</span>%
-                                </div>
-                            )}
                         </div>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
-                        {activeTab === 'main' ? (
-                            <>
-                                <div className="flex justify-between items-center gap-2">
-                                    <div className="flex gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
-                                        <button onClick={undo} disabled={history.length===0} className="btn-base w-10 h-8 rounded-lg text-xs font-bold bg-slate-100 text-slate-500 disabled:opacity-30">↶</button>
-                                        <button onClick={redo} disabled={future.length===0} className="btn-base w-10 h-8 rounded-lg text-xs font-bold bg-slate-100 text-slate-500 disabled:opacity-30">↷</button>
+                        <div className="flex items-center gap-1 mt-2.5">
+                            {[
+                                { on: !simState.isPrecursor && !simState.inCE, label: "通常" },
+                                { on: simState.isPrecursor && !simState.inCE, label: simState.isDondoko ? "どん底(前兆)" : "前兆" },
+                                { on: simState.inCE, label: simState.isSecondCE ? "連演(2回目)" : "連演" },
+                            ].map((p, i) => (
+                                <React.Fragment key={i}>
+                                    {i > 0 && <span className="text-zinc-300 text-[11px]">›</span>}
+                                    <div className={`flex-1 text-center py-1.5 rounded-md text-[11px] font-medium transition-colors ${p.on ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200" : "text-zinc-400 bg-zinc-50"}`}>
+                                        {p.label}
                                     </div>
-                                    <button onClick={handleToggleAT} className={`flex-1 btn-base rounded-xl text-xs font-bold border transition-colors shadow-sm ${simState.isAtEnd ? 'bg-pink-100 border-pink-300 text-pink-600' : 'bg-white border-slate-200 text-slate-400'}`}>AT終了後 {simState.isAtEnd ? 'ON' : 'OFF'}</button>
-                                    <button onClick={() => setShowDataModal(true)} className="btn-base w-10 h-10 rounded-full bg-white border border-slate-200 text-slate-400 shadow-sm text-lg">💾</button>
+                                </React.Fragment>
+                            ))}
+                        </div>
+                        {(simState.isPrecursor || simState.inCE) && (
+                            <div className="mt-1.5 text-[10.5px] text-center text-zinc-500 tabular-nums">
+                                書き換え期待度 <b className="text-sky-600 font-medium">{(totalRewriteChance * 100).toFixed(1)}%</b>
+                            </div>
+                        )}
+                    </header>
+
+                    <div className="t-body">
+                        {activeTab === 'main' ? (
+                            <div className="pt-4 space-y-5">
+                                <div className="flex items-center gap-2">
+                                    <span className="t-sec">現在の区間</span>
+                                    <button onClick={handleToggleAT} className={`t-btn sm ml-auto btn-base ${simState.isAtEnd ? "sel" : ""}`}>
+                                        AT終了後 {simState.isAtEnd ? 'ON' : 'OFF'}
+                                    </button>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="relative row-span-2">
-                                        <button onClick={() => setShowRareMenu(!showRareMenu)} className="btn-base w-full h-full bg-gradient-to-br from-white to-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl shadow-soft flex flex-col items-center justify-center active:scale-95">
-                                            <span className="text-3xl mb-1 filter drop-shadow-sm">🍒</span><span className="font-bold text-lg">レア役</span><span className="text-[10px] text-emerald-600/70 mt-1">タップして選択</span>
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    <div className="relative row-span-2 min-h-[104px]">
+                                        <button onClick={() => setShowRareMenu(!showRareMenu)} className="btn-base t-btn w-full h-full flex-col gap-0.5">
+                                            <span className="text-[15px] font-semibold">レア役</span>
+                                            <span className="text-[10.5px] text-zinc-400 font-normal">タップして選択</span>
                                         </button>
                                         {showRareMenu && (
-                                            <div className="absolute top-0 left-0 w-full h-full bg-white/95 backdrop-blur-sm border border-emerald-200 rounded-2xl shadow-xl z-20 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                                                <button onClick={() => handleTrigger('WEAK_CHERRY')} className="flex-1 border-b border-slate-100 hover:bg-emerald-50 text-emerald-800 font-bold text-sm">🍒 弱チェリー</button>
-                                                <button onClick={() => handleTrigger('STRONG_RARE')} className="flex-1 border-b border-slate-100 hover:bg-emerald-50 text-emerald-800 font-bold text-sm">🎋 強レア役</button>
-                                                <button onClick={() => handleTrigger('STRONG_CHERRY')} className="flex-1 hover:bg-red-50 text-red-600 font-bold text-sm">🍒 強チェリー</button>
-                                                <button onClick={() => setShowRareMenu(false)} className="h-10 bg-slate-50 text-xs text-slate-400 font-bold">閉じる</button>
+                                            <div className="absolute inset-0 bg-white border border-zinc-200 rounded-[9px] shadow-lg z-20 flex flex-col overflow-hidden">
+                                                <button onClick={() => handleTrigger('WEAK_CHERRY')} className="flex-1 border-b border-zinc-100 text-[13px] text-zinc-700 active:bg-zinc-50">弱チェリー</button>
+                                                <button onClick={() => handleTrigger('STRONG_RARE')} className="flex-1 border-b border-zinc-100 text-[13px] text-zinc-700 active:bg-zinc-50">強レア役</button>
+                                                <button onClick={() => handleTrigger('STRONG_CHERRY')} className="flex-1 border-b border-zinc-100 text-[13px] text-sky-600 active:bg-sky-50">強チェリー</button>
+                                                <button onClick={() => setShowRareMenu(false)} className="h-9 bg-zinc-50 text-[11px] text-zinc-400">閉じる</button>
                                             </div>
                                         )}
                                     </div>
-                                    <div className="grid grid-rows-2 gap-3">
-                                        <button onClick={() => handleTrigger('BELL_7')} className="btn-base bg-gradient-to-br from-white to-amber-50 border border-amber-200 text-amber-700 p-3 rounded-2xl shadow-soft font-bold flex items-center justify-center gap-2 active:scale-95">
-                                            <span className="text-xl">🔔</span><span className="font-bold">ベル7回</span>
-                                        </button>
+                                    <div className="grid grid-rows-2 gap-2.5">
+                                        <button onClick={() => handleTrigger('BELL_7')} className="btn-base t-btn">ベル7回</button>
                                         <div className="grid grid-cols-3 gap-2">
-                                            <button onClick={handle100G} className="btn-base bg-white border border-blue-200 text-blue-600 p-1 rounded-xl shadow-soft flex flex-col items-center justify-center active:bg-blue-50"><span className="font-bold text-xs">100G</span><span className="text-[8px] opacity-70">消化</span></button>
-                                            <button onClick={handleJohannesburg} className="btn-base bg-white border border-red-200 text-red-600 p-1 rounded-xl shadow-soft flex flex-col items-center justify-center active:bg-red-50"><span className="font-bold text-[9px] leading-tight">ヨハネス<br/>ブルグ</span></button>
-                                            <button onClick={handleCeiling} className="btn-base bg-white border border-purple-200 text-purple-700 p-1 rounded-xl shadow-soft flex flex-col items-center justify-center active:bg-purple-50"><span className="font-bold text-xs">天井</span><span className="text-[9px] opacity-70">到達</span></button>
+                                            <button onClick={handle100G} className="btn-base t-btn sm flex-col gap-0 px-1"><span className="text-[11px]">100G</span><span className="text-[9px] text-zinc-400 font-normal">消化</span></button>
+                                            <button onClick={handleJohannesburg} className="btn-base t-btn sm px-1 leading-tight text-[9.5px]">ヨハネス<br/>ブルグ</button>
+                                            <button onClick={handleCeiling} className="btn-base t-btn sm flex-col gap-0 px-1"><span className="text-[11px]">天井</span><span className="text-[9px] text-zinc-400 font-normal">到達</span></button>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">フェーズ進行</h3>
+                                <div className="t-card space-y-3.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <h3 className="t-sec">フェーズ進行</h3>
                                         {/* どん底(前兆)滞在時のバッジ表示 */}
                                         {simState.isDondoko && !simState.inCE && (
-                                            <div className="flex items-center ml-auto bg-purple-50 rounded-full border border-purple-200 overflow-hidden shadow-sm animate-in fade-in zoom-in-95 duration-200">
-                                                <span className="text-[10px] font-bold px-2 py-0.5 text-purple-700 border-r border-purple-200">どん底滞在</span>
-                                                <span className="text-[10px] font-bold px-2 py-0.5 bg-pink-500 text-white">発展濃厚</span>
-                                            </div>
+                                            <span className="t-chip">どん底滞在 — 発展濃厚</span>
                                         )}
                                     </div>
-                                    
-                                    <div className="flex gap-2">
-                                        <button 
+
+                                    <div className="flex gap-2 items-stretch">
+                                        <button
                                             onClick={handleTogglePrecursor}
                                             disabled={simState.inCE || simState.isPrecursor}
-                                            className={`w-14 py-3 rounded-xl border text-center transition-all duration-300 btn-base flex-shrink-0 ${
-                                                (simState.isPrecursor && !simState.inCE) 
-                                                ? 'bg-gradient-to-b from-blue-500 to-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200 scale-105 z-10 cursor-default' 
-                                                : 'bg-white border-slate-200 text-slate-300'
+                                            className={`btn-base w-14 flex-none rounded-[9px] border flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors ${
+                                                (simState.isPrecursor && !simState.inCE)
+                                                ? 'bg-sky-600 border-sky-600 text-white cursor-default'
+                                                : 'bg-white border-zinc-200 text-zinc-300'
                                             }`}
                                         >
-                                            <div className="text-[9px] font-bold mb-0.5 opacity-80">STEP 1</div><div className="text-xs font-bold">前兆</div>
+                                            <span className="text-[9px] tracking-wide opacity-80">STEP 1</span>
+                                            <span className="text-[11.5px] font-medium">前兆</span>
                                         </button>
 
-                                        <div className="flex items-center text-slate-300 -mx-1">➜</div>
+                                        <span className="flex items-center text-zinc-300 text-[11px]">›</span>
 
                                         <div className="flex-1 flex gap-1.5">
                                             <button onClick={handleNotDev} disabled={!simState.isPrecursor || simState.inCE || simState.isDondoko}
-                                                className={`flex-1 py-1 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition-all btn-base ${(!simState.isPrecursor || simState.inCE || simState.isDondoko) ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-slate-300 text-slate-500 shadow-sm active:scale-95'}`}>
-                                                <span>非発展</span><span className="opacity-70 font-normal scale-90">(終了)</span>
+                                                className={`btn-base flex-1 rounded-[9px] border flex flex-col items-center justify-center gap-0 py-2 text-[11px] ${(!simState.isPrecursor || simState.inCE || simState.isDondoko) ? 'bg-zinc-50 border-zinc-100 text-zinc-300' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+                                                <span>非発展</span><span className="text-[9px] text-zinc-400">(終了)</span>
                                             </button>
-                                            
+
                                             <button onClick={handleDirectDondoko} disabled={!simState.isPrecursor || simState.inCE || simState.isDondoko || simState.isSecondCE}
-                                                className={`flex-1 py-1 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition-all btn-base ${(!simState.isPrecursor || simState.inCE || simState.isDondoko || simState.isSecondCE) ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-purple-300 text-purple-600 shadow-sm active:scale-95'}`}>
-                                                <span>どん底</span><span className="opacity-70 font-normal scale-90">(直行)</span>
+                                                className={`btn-base flex-1 rounded-[9px] border flex flex-col items-center justify-center gap-0 py-2 text-[11px] ${(!simState.isPrecursor || simState.inCE || simState.isDondoko || simState.isSecondCE) ? 'bg-zinc-50 border-zinc-100 text-zinc-300' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+                                                <span>どん底</span><span className="text-[9px] text-zinc-400">(直行)</span>
                                             </button>
 
                                             <button onClick={handleDev} disabled={!simState.isPrecursor || simState.inCE}
-                                                className={`flex-1 py-1 rounded-xl border text-[10px] font-bold flex flex-col items-center justify-center transition-all btn-base ${(!simState.isPrecursor || simState.inCE) ? 'bg-slate-50 border-slate-100 text-slate-300' : 'bg-white border-blue-400 text-blue-600 shadow-sm active:scale-95'}`}>
-                                                <span>発展</span><span className="opacity-70 font-normal scale-90">(連演へ)</span>
+                                                className={`btn-base flex-1 rounded-[9px] border flex flex-col items-center justify-center gap-0 py-2 text-[11px] ${(!simState.isPrecursor || simState.inCE) ? 'bg-zinc-50 border-zinc-100 text-zinc-300' : 'bg-white border-sky-200 text-sky-600'}`}>
+                                                <span>発展</span><span className="text-[9px] opacity-70">(連演へ)</span>
                                             </button>
                                         </div>
                                     </div>
 
-                                    <div className={`rounded-xl p-3 border transition-all duration-300 ${simState.inCE ? (simState.isSecondCE ? 'bg-purple-50 border-purple-200 shadow-md' : 'bg-indigo-50 border-indigo-200 shadow-md') : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                                        <div className="flex justify-between items-center mb-3">
-                                            {/* 連続演出(2回目)の明記 */}
-                                            <div className={`text-xs font-bold flex items-center ${simState.inCE ? (simState.isSecondCE ? 'text-purple-600' : 'text-indigo-600') : 'text-slate-400'}`}>
-                                                STEP 2 : 連続演出 {simState.isSecondCE ? <span className="ml-1.5 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded">2回目</span> : ""}
-                                            </div>
+                                    <div className={`rounded-[10px] p-3 border ${simState.inCE ? 'bg-sky-50/60 border-sky-200' : 'bg-zinc-50 border-zinc-100 opacity-60'}`}>
+                                        <div className="flex items-center gap-2 mb-2.5">
+                                            <span className={`text-[11px] font-medium ${simState.inCE ? 'text-sky-700' : 'text-zinc-400'}`}>
+                                                STEP 2 — 連続演出
+                                            </span>
+                                            {simState.isSecondCE && <span className="t-chip">2回目</span>}
                                         </div>
                                         <div className="grid grid-cols-3 gap-2">
                                             <button onClick={handleFailNext} disabled={!simState.inCE || simState.isSecondCE}
-                                                className={`btn-base py-3 rounded-lg border text-xs font-bold shadow-sm flex flex-col items-center justify-center ${(!simState.inCE || simState.isSecondCE) ? 'bg-slate-100 border-slate-200 text-slate-300' : 'bg-white border-indigo-300 text-indigo-600 active:bg-indigo-50'}`}>
-                                                失敗<span className="text-[9px] opacity-70">(どん底へ)</span>
+                                                className={`btn-base rounded-[9px] border py-2.5 text-[11px] flex flex-col items-center justify-center gap-0 ${(!simState.inCE || simState.isSecondCE) ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+                                                失敗<span className="text-[9px] text-zinc-400">(どん底へ)</span>
                                             </button>
                                             <button onClick={handleFailEnd} disabled={!simState.inCE}
-                                                className={`btn-base py-3 rounded-lg border text-xs font-bold shadow-sm flex flex-col items-center justify-center ${!simState.inCE ? 'bg-slate-100 border-slate-200 text-slate-300' : 'bg-white border-slate-400 text-slate-600 active:bg-slate-50'}`}>
-                                                失敗<span className="text-[9px] opacity-70">(通常へ)</span>
+                                                className={`btn-base rounded-[9px] border py-2.5 text-[11px] flex flex-col items-center justify-center gap-0 ${!simState.inCE ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+                                                失敗<span className="text-[9px] text-zinc-400">(通常へ)</span>
                                             </button>
                                             <button onClick={handleSuccess} disabled={!simState.inCE}
-                                                className={`btn-base py-3 rounded-lg border text-xs font-bold shadow-sm flex flex-col items-center justify-center ${!simState.inCE ? 'bg-slate-100 border-slate-200 text-slate-300' : 'bg-gradient-to-br from-pink-500 to-rose-500 border-pink-600 text-white active:scale-95'}`}>
+                                                className={`btn-base rounded-[9px] border py-2.5 text-[11px] flex flex-col items-center justify-center gap-0 ${!simState.inCE ? 'bg-zinc-100 border-zinc-200 text-zinc-300' : 'bg-sky-600 border-sky-600 text-white'}`}>
                                                 成功<span className="text-[9px] opacity-80">(CZ当選)</span>
                                             </button>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-                                    <div className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider">履歴</div>
-                                    <div className="h-32 overflow-y-auto scrollbar-hide space-y-1.5 pr-1">
-                                        {simState.log.length === 0 && <div className="text-center text-xs text-slate-300 py-10">履歴なし</div>}
-                                        {simState.log.map((e, i) => (
-                                            <div key={i} className="text-xs py-2 px-3 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between">
-                                                <span className={`font-bold ${e.type==='result-good'?'text-pink-500':e.type==='result-bad'?'text-blue-500':e.type==='important'?'text-purple-600':'text-slate-600'}`}>{e.text}</span>
-                                                <span className={`w-2 h-2 rounded-full ${e.type==='result-good'?'bg-pink-400':e.type==='result-bad'?'bg-blue-400':e.type==='important'?'bg-purple-500':'bg-slate-300'}`}></span>
+                                {/* 設定示唆（カウント項目・計算内容は変更なし） */}
+                                <div className="space-y-2.5">
+                                    <h3 className="t-sec">設定示唆絞り込み</h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[['set2', '設定2以上'], ['set3', '設定3以上'], ['set4', '設定4以上'], ['set5', '設定5以上']].map(([key, label]) => (
+                                            <button key={key} onClick={() => setCounters(p => ({...p, suggestions: {...p.suggestions, [key]: !p.suggestions[key] }}))}
+                                                className={`btn-base t-btn sm ${counters.suggestions[key] ? 'sel' : ''}`}>{label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* AT終了画面（メモ） */}
+                                <div className="space-y-2.5">
+                                    <h3 className="t-sec">AT終了画面（メモ）</h3>
+                                    <div className="t-card divide-y divide-zinc-100 py-0">
+                                        {[{k:'default',l:'デフォルト',s:null},{k:'highWeak',l:'高設定示唆［弱］',s:null},{k:'highStrong',l:'高設定示唆［強］',s:null},{k:'ka',l:'可',s:'設定2以上'},{k:'kichi',l:'吉',s:'設定3以上'},{k:'ryo',l:'良',s:'設定4以上'},{k:'yu',l:'優',s:'設定5以上'},{k:'kiwami',l:'極',s:'設定6濃厚'}].map(o=>(
+                                            <div key={o.k} className="t-row">
+                                                <div className="t-row-label">
+                                                    <b className={o.s ? "on" : ""}>{o.l}</b>
+                                                    {o.s && <small>{o.s}</small>}
+                                                </div>
+                                                <div className="t-step">
+                                                    <button type="button" onClick={() => updateCounter(o.k, -1)} aria-label={`${o.l} を減らす`}>−</button>
+                                                    <input type="number" inputMode="numeric" min="0" readOnly value={counters.atScreens[o.k]}
+                                                        className={counters.atScreens[o.k] > 0 ? "on" : ""} />
+                                                    <button type="button" onClick={() => updateCounter(o.k, 1)} aria-label={`${o.l} を増やす`}>＋</button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
-                            </>
+
+                                <div className="t-card">
+                                    <div className="t-sec mb-2">履歴</div>
+                                    <div className="h-32 overflow-y-auto scrollbar-hide">
+                                        {simState.log.length === 0 && <div className="t-empty">履歴なし</div>}
+                                        {simState.log.map((e, i) => (
+                                            <div key={i} className="t-log">
+                                                <span className={e.type==='result-good' ? 'text-sky-600 font-medium' : 'text-zinc-600'}>{e.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <button onClick={resetAll} className="btn-base t-btn danger w-full">全データをリセット</button>
+                            </div>
                         ) : (
-                            <div className="space-y-6">
-                                {/* Analysis Tab */}
-                                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-                                    <h2 className="text-center text-slate-700 font-bold mb-6 text-sm tracking-wider">設定推測結果</h2>
-                                    <div className="space-y-4">
-                                        {[1, 2, 3, 4, 5, 6].map(num => {
-                                            const p = pct[num] || 0;
-                                            const isTop = Math.max(...pct.slice(1)) === p && p > 0;
+                            <div className="pt-4 space-y-3">
+                                {/* 判別結果タブ（表示のみ） */}
+                                <div className="t-panel">
+                                    <div className="space-y-1.5">
+                                        {[1, 2, 3, 4, 5, 6].map(numV => {
+                                            const p = pct[numV] || 0;
                                             return (
-                                                <div key={num} className="flex items-center">
-                                                    <div className={`w-8 text-sm font-bold ${isTop ? 'text-pink-600' : 'text-slate-400'}`}>設定{num}</div>
-                                                    <div className="flex-1 h-3 bg-slate-100 rounded-full mx-3 overflow-hidden relative">
-                                                        <div className={`h-full transition-all duration-700 ease-out ${isTop ? 'bg-pink-500' : 'bg-slate-400'}`} style={{ width: `${p}%` }}></div>
-                                                    </div>
-                                                    <div className={`w-12 text-sm text-right font-mono ${isTop ? 'text-pink-600 font-bold' : 'text-slate-500'}`}>{p.toFixed(1)}%</div>
+                                                <div key={numV} className="flex items-center gap-2.5">
+                                                    <span className="w-4 text-[11px] text-zinc-400 tabular-nums text-right">{numV}</span>
+                                                    <div className="t-bar flex-1"><i className={`t-bar-${numV}`} style={{ width: `${p}%` }} /></div>
+                                                    <span className="w-12 text-right text-xs tabular-nums text-zinc-700">{p.toFixed(1)}%</span>
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                    <div className="text-center text-[10px] text-slate-400 mt-6 pt-4 border-t border-slate-100">※初期値は均等(16.7%)</div>
+                                    <div className="grid grid-cols-3 gap-px bg-zinc-200 rounded-lg overflow-hidden mt-4 border border-zinc-200">
+                                        {[
+                                            ["奇数", (pct[1] + pct[3] + pct[5]).toFixed(1) + "%"],
+                                            ["設定4+", (pct[4] + pct[5] + pct[6]).toFixed(1) + "%"],
+                                            ["設定6", pct[6].toFixed(1) + "%"],
+                                        ].map(([k, v]) => (
+                                            <div key={k} className="bg-white py-2 text-center">
+                                                <div className="text-[10px] text-zinc-400">{k}</div>
+                                                <div className="text-[13px] tabular-nums text-zinc-900">{v}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="text-[11px] text-zinc-400 mt-3">初期値は設定1〜6均等（16.7%）</p>
                                 </div>
-                                <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                                    <h3 className="text-xs text-slate-500 mb-4 font-bold text-center">現在の状態推測 (全設定)</h3>
+
+                                <div className="t-card">
+                                    <h3 className="t-sec mb-3">現在の状態推測（全設定）</h3>
                                     <div className="space-y-2">
                                         {SETTINGS.map(setting => (
                                             <div key={setting} className="flex items-center gap-2">
-                                                <div className="text-[10px] w-8 font-bold text-slate-500 text-right">設定{setting}</div>
-                                                <div className="flex-1 flex text-[9px] text-center rounded overflow-hidden h-4 bg-slate-100 w-full">
+                                                <div className="text-[10px] w-4 text-zinc-400 text-right tabular-nums">{setting}</div>
+                                                <div className="flex-1 flex text-[9px] text-center rounded overflow-hidden h-4 bg-zinc-100">
                                                     {STATE_NAMES.map((name, idx) => {
-                                                        const prob = (simState.stateProbs?.[setting] || [])[idx] || 0; 
-                                                        const colors = ["bg-slate-400", "bg-blue-500", "bg-emerald-500", "bg-red-500"];
-                                                        return prob > 0.001 ? <div key={idx} className={`${colors[idx]} text-white flex items-center justify-center truncate transition-all duration-500`} style={{ width: `${prob * 100}%` }}>{(prob * 100) > 15 && name}</div> : null;
+                                                        const prob = (simState.stateProbs?.[setting] || [])[idx] || 0;
+                                                        const colors = ["bg-zinc-300 text-zinc-600", "bg-sky-300 text-sky-900", "bg-sky-500 text-white", "bg-sky-700 text-white"];
+                                                        return prob > 0.001 ? <div key={idx} className={`${colors[idx]} flex items-center justify-center truncate transition-all duration-500`} style={{ width: `${prob * 100}%` }}>{(prob * 100) > 15 && name}</div> : null;
                                                     })}
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="flex justify-end gap-2 text-[9px] text-slate-400 mt-3 pt-2 border-t border-slate-100">
-                                        <span className="flex items-center"><span className="w-2 h-2 bg-slate-400 rounded-full mr-1"></span>通常</span>
-                                        <span className="flex items-center"><span className="w-2 h-2 bg-blue-500 rounded-full mr-1"></span>高確A</span>
-                                        <span className="flex items-center"><span className="w-2 h-2 bg-emerald-500 rounded-full mr-1"></span>高確B</span>
-                                        <span className="flex items-center"><span className="w-2 h-2 bg-red-500 rounded-full mr-1"></span>超高確</span>
+                                    <div className="flex justify-end flex-wrap gap-x-3 gap-y-1 text-[10px] text-zinc-400 mt-3 pt-2.5 border-t border-zinc-100">
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-zinc-300 rounded-sm"></span>通常</span>
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-sky-300 rounded-sm"></span>高確A</span>
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-sky-500 rounded-sm"></span>高確B</span>
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-sky-700 rounded-sm"></span>超高確</span>
                                     </div>
                                 </div>
-                                <div className="space-y-3">
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">設定示唆絞り込み</h3>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {[['set2', '設定2以上'], ['set3', '設定3以上'], ['set4', '設定4以上'], ['set5', '設定5以上']].map(([key, label]) => (
-                                            <button key={key} onClick={() => setCounters(p => ({...p, suggestions: {...p.suggestions, [key]: !p.suggestions[key] }}))} className={`p-3 text-xs font-bold rounded-lg border transition-all shadow-sm ${counters.suggestions[key] ? 'bg-pink-50 border-pink-400 text-pink-600' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{label}</button>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="space-y-3">
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">AT終了画面 (メモ)</h3>
-                                    <div className="grid grid-cols-6 gap-2 text-center">
-                                        <div className="col-span-6 bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-24 relative overflow-hidden group hover:border-slate-300">
-                                            <div className="absolute top-2 left-3 text-sm font-bold text-slate-500">デフォルト</div>
-                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-4xl font-bold text-slate-800 font-mono">{counters.atScreens.default}</div>
-                                            <button onClick={() => updateCounter('default', 1)} className="absolute inset-0 w-full h-full z-10 active:bg-slate-50/50"></button>
-                                            <button onClick={(e) => { e.stopPropagation(); updateCounter('default', -1); }} className="absolute bottom-2 left-2 w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-400 rounded-full z-20 text-lg font-bold shadow-sm">-</button>
-                                        </div>
-                                        {[{k:'highWeak',l:'高設定(弱)',c:'text-blue-500',w:3},{k:'highStrong',l:'高設定(強)',c:'text-pink-500',w:3},{k:'ka',l:'可(2+)',c:'text-cyan-600',w:2},{k:'kichi',l:'吉(3+)',c:'text-emerald-600',w:2},{k:'ryo',l:'良(4+)',c:'text-red-600',w:2},{k:'yu',l:'優(5+)',c:'text-silver',w:3},{k:'kiwami',l:'極(6確)',c:'text-gold',w:3}].map(o=>(
-                                            <div key={o.k} className={`col-span-${o.w} bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between ${o.w===3?'h-20':'h-16'} relative hover:border-slate-300`}>
-                                                <div className={`absolute top-1 left-2 text-[10px] font-bold ${o.c}`}>{o.l}</div>
-                                                <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xl font-bold text-slate-700 font-mono">{counters.atScreens[o.k]}</div>
-                                                <button onClick={() => updateCounter(o.k, 1)} className="absolute inset-0 z-10"></button>
-                                                <button onClick={(e) => { e.stopPropagation(); updateCounter(o.k, -1); }} className="absolute bottom-1 left-2 w-5 h-5 flex items-center justify-center bg-slate-100 text-slate-400 rounded-full z-20 text-[10px]">-</button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <button onClick={resetAll} className="w-full py-4 mt-6 text-red-500 border border-red-100 bg-red-50/50 rounded-xl hover:bg-red-50 text-xs font-bold">全データをリセット</button>
+
+                                <p className="t-sub pt-1">
+                                    状態推移・連続演出の当落・設定示唆・AT終了画面のカウントからベイズ推定で算出しています。
+                                    入力は「記録」タブでおこないます。
+                                </p>
                             </div>
                         )}
                     </div>
-                    {/* Fixed Footer */}
-                    <div className="bg-white border-t border-slate-200 flex fixed bottom-0 w-full max-w-md z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                        <button onClick={() => setActiveTab('main')} className={`flex-1 py-4 text-center font-bold text-xs transition-colors relative ${activeTab === 'main' ? 'text-blue-600' : 'text-slate-400'}`}>
-                            <span className="text-lg block mb-0.5">⏱</span>タイムライン{activeTab === 'main' && <div className="absolute top-0 left-0 w-full h-0.5 bg-blue-500"></div>}
+
+                    {/* 下部タブ */}
+                    <nav className="t-tabs">
+                        <button onClick={() => { setActiveTab('main'); window.scrollTo(0,0); }} className={`t-tab ${activeTab === 'main' ? 'on' : ''}`}>
+                            <IconRecord className="w-[18px] h-[18px]" />
+                            記録
                         </button>
-                        <button onClick={() => setActiveTab('counter')} className={`flex-1 py-4 text-center font-bold text-xs transition-colors relative ${activeTab === 'counter' ? 'text-blue-600' : 'text-slate-400'}`}>
-                            <span className="text-lg block mb-0.5">📊</span>判別・分析{activeTab === 'counter' && <div className="absolute top-0 left-0 w-full h-0.5 bg-blue-500"></div>}
+                        <button onClick={() => { setActiveTab('counter'); window.scrollTo(0,0); }} className={`t-tab ${activeTab === 'counter' ? 'on' : ''}`}>
+                            <IconResult className="w-[18px] h-[18px]" />
+                            判別結果
                         </button>
-                    </div>
-                    
-                    {/* Data Modal */}
+                    </nav>
+
+                    {/* データ管理 */}
                     {showDataModal && (
-                        <div className="absolute inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5">
-                                <h3 className="text-lg font-bold text-slate-800 text-center">データ管理</h3>
-                                <div className="space-y-3">
-                                    <button onClick={copyToClipboard} className="w-full p-4 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 text-sm shadow-lg shadow-slate-200 transition-all active:scale-95 flex items-center justify-center gap-2"><span>📤</span> 保存 (コピー)</button>
+                        <div className="t-modal" onClick={() => setShowDataModal(false)}>
+                            <div className="t-modal-box" onClick={(e) => e.stopPropagation()}>
+                                <h3>データ管理</h3>
+                                <button onClick={copyToClipboard} className="btn-base t-btn w-full">現在の記録をコピー</button>
+                                <div className="border-t border-zinc-100 mt-4 pt-4 space-y-2.5">
+                                    <textarea className="t-ta" placeholder="ここに保存したデータを貼り付け" value={importText} onChange={(e) => setImportText(e.target.value)}></textarea>
+                                    <button onClick={importData} className="btn-base t-btn on w-full">貼り付けたデータを読み込む</button>
                                 </div>
-                                <div className="border-t border-slate-100 pt-5 space-y-3">
-                                    <textarea className="w-full border border-slate-200 bg-slate-50 rounded-xl p-3 text-xs h-24 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all" placeholder='ここに保存したデータを貼り付け...' value={importText} onChange={(e) => setImportText(e.target.value)}></textarea>
-                                    <button onClick={importData} className="w-full p-4 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600 text-sm shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-2"><span>📥</span> 読込 (再開)</button>
-                                </div>
-                                <button onClick={() => setShowDataModal(false)} className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-bold">キャンセル</button>
+                                <button onClick={() => setShowDataModal(false)} className="t-link w-full justify-center mt-3">キャンセル</button>
                             </div>
                         </div>
                     )}
