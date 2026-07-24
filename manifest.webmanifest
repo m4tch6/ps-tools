@@ -1,7 +1,7 @@
 {
   "name": "ツールのカケラ",
   "short_name": "ツールのカケラ",
-  "description": "回転率計算と設定判別（ガルパン／スタァライト／虚構推理）をまとめたツール集。",
+  "description": "パチンコ・パチスロのツールをまとめたポータルサイト。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
