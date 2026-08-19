@@ -160,8 +160,9 @@
             pSuccGivenDev += safeDist[STATES.NORMAL] * succRates[0];
             pSuccGivenDev += safeDist[STATES.HIGHA] * succRates[1];
             pSuccGivenDev += safeDist[STATES.HIGHB] * succRates[2];
-            let ultraSuccRate = 1.0;
-            if (trigger === 'BELL_7' && bellCount < 2) ultraSuccRate = 0.301;
+            // 超高確は発展すれば必ずCZ当選（成功率は常に1.0）。
+            // ベル7回1回目の30.1%は発展率側の話なので、ここで重ねて掛けてはいけない。
+            const ultraSuccRate = 1.0;
             pSuccGivenDev += safeDist[STATES.ULTRA] * ultraSuccRate;
 
             // STEP 1 (発展判定)
