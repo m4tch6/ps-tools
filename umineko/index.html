@@ -771,9 +771,9 @@ const TOOL_CSS = `
 
 /* タブ（上に貼りつく） */
 .u2-tabs { position: sticky; top: 0; z-index: 15; margin: 0 -0.75rem; padding: 0 0.75rem; background: var(--um-bg); border-bottom: 1px solid var(--um-line); }
-.u2-tabs__in { display: flex; overflow-x: auto; scrollbar-width: none; }
+.u2-tabs__in { display: flex; overflow-x: auto; overflow-y: hidden; margin-bottom: -1px; scrollbar-width: none; }
 .u2-tabs__in::-webkit-scrollbar { display: none; }
-.u2-tab { flex: none; min-height: 44px; margin-bottom: -1px; padding: 0 0.45rem; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--um-muted); font: inherit; font-size: 0.82rem; letter-spacing: 0.05em; white-space: nowrap; cursor: pointer; }
+.u2-tab { flex: none; min-height: 44px; padding: 0 0.45rem; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--um-muted); font: inherit; font-size: 0.82rem; letter-spacing: 0.05em; white-space: nowrap; cursor: pointer; }
 .u2-tab[aria-selected="true"] { color: var(--um-accent-strong); border-bottom-color: var(--um-accent); font-weight: 700; }
 
 /* 操作面 */
