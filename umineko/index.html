@@ -12,6 +12,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link id="um-fonts" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400;1,500&family=Shippori+Mincho+B1:wght@400;500;700;800&display=swap">
+<!-- 日本語の文節区切り（BudouX）。本体が読み込む前に取得を始めておく -->
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/budoux@0.7.0/+esm" crossorigin>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -108,23 +110,31 @@ const ART_PIC = [
     g: "1回目",
     items: [
       { k: "picBattler", label: "戦人", sub: "デフォルト" },
-      { k: "picMaria", label: "真里亞", sub: "偶数期待度UP" },
+      { k: "picMaria", label: "真里亞", sub: "偶数設定の期待度UP" },
       { k: "picJessica", label: "朱志香", sub: "設定1否定", tone: "red" },
-      { k: "picGeorge", label: "譲治", sub: "設定2以上期待度UP" },
+      { k: "picGeorge", label: "譲治", sub: "設定2以上の期待度UP" },
     ],
   },
   {
     g: "2回目以降",
     items: [
-      { k: "picZepar", label: "ゼパル・フルフル", sub: "奇数期待度UP" },
-      { k: "picEnjeErika", label: "縁寿・ヱリカ", sub: "偶数期待度UP" },
-      { k: "picOba", label: "叔母", sub: "設定2以上期待度UP" },
+      { k: "picZepar", label: "ゼパル・フルフル", sub: "奇数設定の期待度UP" },
+      { k: "picEnjeErika", label: "縁寿・ヱリカ", sub: "偶数設定の期待度UP" },
+      { k: "picOba", label: "叔母", sub: "設定2以上の期待度UP" },
       { k: "picSiesta", label: "シエスタ姉妹", sub: "設定1否定", tone: "red" },
       { k: "artEnjoNanashimai", label: "縁寿＆7姉妹", sub: "設定4以上濃厚", tone: "red" },
       { k: "artMiniChara", label: "ミニキャラ", sub: "設定6濃厚", tone: "red" },
     ],
   },
 ];
+/* 1枚絵の画像は、公開サイトの umineko/pic/ に項目のキー名（picBattler など）で置いている。
+   10枚で約600KBあり、JSXに埋め込むとページが重くなるため別ファイルにした。
+   一覧には縮小版（キー名-s.webp・320×180）、拡大表示には原寸（560×315）を使う。
+   元の画像は 設定判別/うみねこ２/1枚絵/ にある */
+const PIC_DIR = "pic/";
+const picSrc = (k, small) => `${PIC_DIR}${k}${small ? "-s" : ""}.webp`;
+/* 拡大表示で前後に送るための、全10枚の通しの並び */
+const PICS = ART_PIC.flatMap((grp) => grp.items.map((it) => ({ ...it, g: grp.g })));
 const ART_LEN = { artLv1: 30, artLv2: 50, artLv3: 90 };
 
 /* Lv.2ナビの実効確率（解析値 × Lv.2成立率75%） */
@@ -785,7 +795,7 @@ const TOOL_CSS = `
 @media (min-width: 34rem) { .u2-tiles:not(.u2-tiles--2) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .u2-tile { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 32px; min-height: 54px; background: rgba(255, 255, 255, 0.015); border: 1px solid var(--um-line-faint); }
 .u2-tile.has-value { border-color: var(--um-line); }
-.u2-tile__main { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr; column-gap: 0.3rem; align-items: end; padding: 0.32rem 0.4rem 0.3rem 0.5rem; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.u2-tile__main { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr; column-gap: 0.5rem; align-items: end; padding: 0.32rem 0.4rem 0.3rem 0.5rem; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .u2-tile__main:active { background: rgba(200, 160, 74, 0.12); }
 .u2-tile__label { grid-column: 1 / -1; align-self: start; font-size: 0.8rem; font-weight: 500; line-height: 1.3; letter-spacing: 0.02em; overflow-wrap: anywhere; }
 /* 図柄ラベル：配当表と同じく1つあたり幅の約1/3を重ねて並べる。マスが狭い端末では全体が縮む */
@@ -850,7 +860,7 @@ const TOOL_CSS = `
 .u2-choice.um-btn { flex-direction: column; align-items: flex-start; gap: 0; padding: 0.45em 0.8em; text-align: left; letter-spacing: 0.04em; }
 .u2-choice__sub { font-size: 0.68rem; opacity: 0.85; }
 .u2-actions { margin-top: 0.5rem; gap: 0.5rem; }
-.u2-actions .um-btn { flex: 1 1 9rem; }
+.u2-actions .um-btn { flex: 1 1 9rem; padding-inline: 1em; white-space: nowrap; }
 .u2-armed.um-btn, .u2-armed.um-btn:hover { background: transparent; color: var(--um-truth-red); border-color: var(--um-truth-red); }
 .u2-summary { display: block; width: 100%; margin-top: 0.6rem; padding: 0.6rem 0.8rem; background: var(--um-bg); color: var(--um-text); border: 1px solid var(--um-line); border-radius: 0; font: inherit; font-size: 0.74rem; line-height: 1.7; }
 
@@ -917,7 +927,7 @@ const TOOL_CSS = `
 .u2-hist__time { font-size: 0.78rem; color: var(--um-muted); }
 .u2-hist__label { line-height: 1.45; overflow-wrap: anywhere; }
 .u2-hist__item.is-latest .u2-hist__label { color: var(--um-accent-strong); }
-.u2-hist__item.is-undone .u2-hist__label { color: var(--um-muted); text-decoration: line-through; text-decoration-color: var(--um-line); }
+.u2-hist__item.is-undone .u2-hist__label, .u2-hist__item.is-undone .u2-ph { color: var(--um-muted); text-decoration: line-through; text-decoration-color: var(--um-line); }
 .u2-hist__jump { min-height: 36px; padding: 0 0.2rem; background: transparent; border: 0; color: var(--um-accent); font: inherit; font-size: 0.7rem; letter-spacing: 0.04em; white-space: nowrap; text-decoration: underline; text-decoration-color: var(--um-line); text-underline-offset: 0.25em; cursor: pointer; }
 .u2-hist__now { display: flex; align-items: center; gap: 0.6rem; margin: 0.35rem 0 0.1rem; font-size: 0.7rem; letter-spacing: 0.12em; color: var(--um-accent); }
 .u2-hist__now::before, .u2-hist__now::after { content: ""; flex: 1; height: 1px; background: var(--um-line); }
@@ -937,6 +947,57 @@ const TOOL_CSS = `
 
 .u2-edit__input { display: block; width: 100%; height: 56px; margin: 0.2rem 0 0.8rem; padding: 0; background: transparent; border: 0; border-bottom: 1px solid var(--um-line); border-radius: 0; color: var(--um-accent-strong); font-size: 2rem; text-align: right; }
 .u2-edit__was { margin: 0; font-size: 0.72rem; color: var(--um-muted); }
+
+/* 日本語の折り返し：文節（u2-ph）の切れ目でだけ改行する。
+   1文節が枠より長いときだけ、はみ出さないよう文節の中で折る。演出名（u2-src）も1つずつ箱にする */
+.u2-root { line-break: strict; overflow-wrap: anywhere; }
+.u2-root.is-phrased { word-break: keep-all; }
+.u2-ph, .u2-src { display: inline-block; }
+.u2-note, .u2-check__note, .u2-db-src, .u2-voice__line, .u2-verdict { text-wrap: pretty; }
+.u2-title { text-wrap: balance; }
+.u2-root .u2-red { color: var(--um-truth-red); }
+
+/* タブの帯：右にタブが隠れている間は右端をぼかす。選んだタブは、ぼかしにかからない位置まで送る */
+.u2-tabs__in { scroll-padding-inline: 2.4rem; }
+.u2-tabs__in:not(.is-end) {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 2.2rem), transparent);
+          mask-image: linear-gradient(90deg, #000 calc(100% - 2.2rem), transparent);
+}
+
+/* 1列のマス（説明が長いもの）。広い画面では3列 */
+.u2-tiles--wide { grid-template-columns: 1fr; }
+
+/* 1枚絵：画像は16:9。マスの中では押しても長押ししても画像ではなくマスが反応するようにする */
+.u2-pic { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--um-line-faint); }
+.u2-pic-label { display: flex; flex-direction: column; gap: 0.3rem; width: 100%; }
+.u2-tile .u2-pic { pointer-events: none; -webkit-touch-callout: none; -webkit-user-drag: none; user-select: none; }
+.u2-tiles--pic .u2-tile__main { padding-top: 0.4rem; }
+
+/* データベースの1枚絵（押すと拡大） */
+.u2-picgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem 0.5rem; margin: 0.45rem 0 0.2rem; }
+@media (min-width: 34rem) { .u2-picgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.u2-piccard { display: flex; flex-direction: column; gap: 0.1rem; padding: 0 0 0.35rem; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: zoom-in; }
+.u2-piccard .u2-pic { margin-bottom: 0.3rem; transition: border-color 0.15s, filter 0.15s; }
+.u2-piccard:hover .u2-pic, .u2-piccard:focus-visible .u2-pic { border-color: var(--um-accent); filter: brightness(1.08); }
+.u2-piccard__name { font-size: 0.8rem; font-weight: 500; line-height: 1.35; letter-spacing: 0.02em; }
+.u2-piccard__sub { font-size: 0.68rem; line-height: 1.4; color: var(--um-muted); }
+
+/* 1枚絵の拡大（読み込み中は縮小版を下に敷く） */
+.u2-viewer { margin: -0.7rem -1rem 0; aspect-ratio: 16 / 9; background: #000 center / cover no-repeat; touch-action: pan-y; }
+.u2-viewer__img { display: block; width: 100%; height: 100%; object-fit: contain; -webkit-user-drag: none; }
+.u2-viewer__cap { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.15rem 1rem; margin: 0.65rem 0 0; font-size: 0.86rem; line-height: 1.5; }
+.u2-viewer__grp { font-size: 0.72rem; color: var(--um-muted); }
+.u2-viewer__nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.6rem; margin-top: 0.75rem; }
+.u2-viewer__nav .um-btn { min-height: 44px; }
+.u2-viewer__pos { font-size: 0.8rem; color: var(--um-muted); text-align: center; }
+
+/* 転落時のボイス（名前と示唆、その下にセリフ） */
+.u2-voices { margin: 0.3rem 0 0.2rem; padding: 0; list-style: none; }
+.u2-voice { padding: 0.4rem 0; border-bottom: 1px solid var(--um-line-faint); }
+.u2-voice__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 0.8rem; }
+.u2-voice__who { font-size: 0.8rem; font-weight: 500; letter-spacing: 0.02em; }
+.u2-voice__hint { font-size: 0.72rem; color: var(--um-muted); }
+.u2-voice__line { display: block; margin-top: 0.1rem; font-size: 0.74rem; line-height: 1.6; color: var(--um-muted); }
 
 /* タッチ端末では、押した後に金の塗りが残らないようにする */
 @media (hover: none) {
@@ -1010,12 +1071,13 @@ function migrate(saved) {
   return s;
 }
 
+/* 濃厚要素。src は該当する演出の一覧で、画面では1項目ずつ途中で改行しないように並べる */
 const CONF_ROWS = [
-  { k: "s2", label: "設定2以上濃厚", src: "RB中キャラ紹介が全て銀／1枚絵 朱志香・シエスタ姉妹／超パー「88%」" },
-  { k: "s3", label: "設定3以上濃厚", src: "超パー「33%」／転落ボイス ウィル・ベルンカステル" },
-  { k: "s4", label: "設定4以上濃厚", src: "CHECKMATE（金）／1枚絵 縁寿＆7姉妹／超パー「44%」／ボイス ベアト(雛)" },
-  { k: "s5", label: "設定5以上濃厚", src: "超パー「55%」／転落ボイス ベアトリーチェ" },
-  { k: "s6", label: "設定6濃厚", src: "CHECKMATE（虹）／RB全て金背景／1枚絵 ミニキャラ／超パー「66%」" },
+  { k: "s2", label: "設定2以上濃厚", src: ["RB中キャラ紹介が全て銀", "1枚絵 朱志香・シエスタ姉妹", "超パー「88%」"] },
+  { k: "s3", label: "設定3以上濃厚", src: ["超パー「33%」", "転落ボイス ウィル・ベルンカステル"] },
+  { k: "s4", label: "設定4以上濃厚", src: ["CHECKMATE（金）", "1枚絵 縁寿＆7姉妹", "超パー「44%」", "転落ボイス ベアト（雛）"] },
+  { k: "s5", label: "設定5以上濃厚", src: ["超パー「55%」", "転落ボイス ベアトリーチェ"] },
+  { k: "s6", label: "設定6濃厚", src: ["CHECKMATE（虹）", "RB中キャラ紹介が全て金", "1枚絵 ミニキャラ", "超パー「66%」"] },
 ];
 
 const KEY_LABEL = {
@@ -1031,7 +1093,7 @@ const KEY_LABEL = {
   lv2dN: "同色BB後 ART突入", lv2dK: "同色BB後 Lv.2ナビ",
   lv2iN: "異色BB後 ART突入", lv2iK: "異色BB後 Lv.2ナビ",
   lv2oN: "REG後・その他 ART突入", lv2oK: "REG後・その他 Lv.2ナビ",
-  memoOdd: "奇数設定 期待度UP", memoEven: "偶数設定 期待度UP", memo2: "設定2以上 期待度UP",
+  memoOdd: "奇数設定の期待度UP", memoEven: "偶数設定の期待度UP", memo2: "設定2以上の期待度UP",
   prior: "事前分布", vibrate: "タップ時の振動",
 };
 for (const g of GROUPS) {
@@ -1152,14 +1214,83 @@ const hhmmss = (t) => {
 
 /* ============================ 部品 ============================ */
 
+/* ---- 日本語の折り返し ----
+   BudouX（Google製の日本語の文節区切り）で文を文節に分け、文節ごとに inline-block の箱（u2-ph）に入れて、
+   切れ目に <wbr> を置く。word-break: keep-all だけでは閉じ括弧や「＝」の後ろでも改行されるため、箱にしている。
+   1行に入りきらない長い文節だけは、箱の中で折り返す。
+   読み込めない環境では、ブラウザ標準の折り返しのまま使える */
+const BUDOUX_URL = "https://cdn.jsdelivr.net/npm/budoux@0.7.0/+esm";
+/* ブラウザ上のBabelは import() を require() に書き換えてしまい、読み込めなくなる。
+   Function で作った関数の中身はBabelを通らないので、素の import() のまま呼べる */
+const importModule = new Function("url", "return import(url)");
+let phraser = null;
+const phraseCache = new Map();
+/* 句読点・閉じ括弧・感嘆符・中黒・スラッシュで始まる文節は、行頭に来ないよう前の文節につなげる */
+const NO_LINE_START = /^[、。，．,.！？!?…‥ー〜）」』】〕〉》］｝)\]}・：:；;／%％]/;
+/* 短い括弧書き（PH_MAX字まで）は、途中で改行しないよう1つの文節にまとめる */
+const OPEN_BR = /[（「『【〔〈《［｛(\[{]/g;
+const CLOSE_BR = /[）」』】〕〉》］｝)\]}]/g;
+const PH_MAX = 16;
+const openDepth = (s) => (s.match(OPEN_BR) || []).length - (s.match(CLOSE_BR) || []).length;
+/* 「1/16384→1/7282」のような範囲は、矢印の後ろで改行できるように分ける */
+const splitArrow = (s) => {
+  const a = s.split("→");
+  return a.map((p, i) => (i < a.length - 1 ? p + "→" : p)).filter((p) => p);
+};
+function phrases(text) {
+  if (!phraser) return null;
+  let out = phraseCache.get(text);
+  if (out) return out;
+  const raw = [];
+  for (const chunk of phraser.parse(text)) {
+    for (const p of splitArrow(chunk)) {
+      if (raw.length && NO_LINE_START.test(p)) raw[raw.length - 1] += p;
+      else raw.push(p);
+    }
+  }
+  out = [];
+  for (let i = 0; i < raw.length; i++) {
+    let cur = raw[i];
+    let depth = openDepth(cur);
+    let j = i;
+    while (depth > 0 && j + 1 < raw.length && cur.length + raw[j + 1].length <= PH_MAX) {
+      j += 1;
+      cur += raw[j];
+      depth += openDepth(raw[j]);
+    }
+    if (j > i && depth <= 0) {
+      out.push(cur);
+      i = j;
+    } else {
+      out.push(raw[i]);
+    }
+  }
+  if (phraseCache.size > 1000) phraseCache.clear();
+  phraseCache.set(text, out);
+  return out;
+}
+
 /* 文中の数値だけを、等幅のライニング数字（um-num）にする */
 const NUM_RE = /(\d[\d,]*(?:\.\d+)?(?:\/\d[\d,]*(?:\.\d+)?)?%?)/g;
+const nums = (text, key = "") => {
+  const parts = text.split(NUM_RE);
+  if (parts.length === 1) return text;
+  return parts.map((p, i) => (i % 2 === 1 ? <span key={key + i} className="um-num">{p}</span> : p));
+};
+/* 画面に出す文字列はこれを通す（数値の書体をそろえ、文節の切れ目で折り返す） */
 function T({ children }) {
   if (children === null || children === undefined || children === false) return null;
   const text = String(children);
-  const parts = text.split(NUM_RE);
-  if (parts.length === 1) return text;
-  return parts.map((p, i) => (i % 2 === 1 ? <span key={i} className="um-num">{p}</span> : p));
+  const ps = phrases(text);
+  if (!ps) {
+    /* 文節区切りを読み込むまでは、範囲の矢印の後ろだけ改行位置を足す */
+    const parts = splitArrow(text);
+    if (parts.length < 2) return nums(text);
+    return parts.map((p, i) => <React.Fragment key={i}>{i ? <wbr /> : null}{nums(p, i + "-")}</React.Fragment>);
+  }
+  return ps.map((p, i) => (
+    <React.Fragment key={i}>{i ? <wbr /> : null}<span className="u2-ph">{nums(p, i + "-")}</span></React.Fragment>
+  ));
 }
 
 const Glyph = ({ plus }) => (
@@ -1190,6 +1321,32 @@ function ReelLabel({ role, line }) {
     </span>
   );
 }
+
+/* 1枚絵の画像。読めない環境（JSX単体で使う場合など）では画像だけ消して、文字で使えるようにする */
+function PicImg({ k, big, alt = "" }) {
+  const [ok, setOk] = useState(true);
+  if (!ok) return null;
+  return (
+    <img
+      className={big ? "u2-viewer__img" : "u2-pic"}
+      src={picSrc(k, !big)}
+      alt={alt}
+      width={big ? 560 : 320}
+      height={big ? 315 : 180}
+      loading={big ? undefined : "lazy"}
+      decoding="async"
+      draggable="false"
+      onError={() => setOk(false)}
+    />
+  );
+}
+/* 1枚絵のマスのラベル：縮小画像の下に名前（出た絵と見比べて押せるように） */
+const PicLabel = ({ k, name }) => (
+  <span className="u2-pic-label">
+    <PicImg k={k} />
+    <span className="u2-pic-label__name">{name}</span>
+  </span>
+);
 
 function Tile({ k, label, note, value, red, hit, onInc, onDec, onEdit }) {
   const timer = useRef(null);
@@ -1228,7 +1385,7 @@ function Tile({ k, label, note, value, red, hit, onInc, onDec, onEdit }) {
         }}
       >
         <span className={"u2-tile__label" + (red ? " um-truth um-truth--red" : "")}>{typeof label === "string" ? <T>{label}</T> : label}</span>
-        {note ? <span className="u2-tile__note"><T>{note}</T></span> : null}
+        {note ? <span className="u2-tile__note">{typeof note === "string" ? <T>{note}</T> : note}</span> : null}
         <span className="u2-tile__value um-num">{value}</span>
       </button>
       <button type="button" className="u2-tile__minus" aria-label={`${who}を1減らす`} onClick={onDec}><Glyph /></button>
@@ -1258,7 +1415,7 @@ function Check({ checked, onChange, label, note, labelClass }) {
     <button type="button" role="checkbox" aria-checked={checked} className="u2-check" onClick={() => onChange(!checked)}>
       <span className="u2-check__box" aria-hidden="true" />
       <span className={"u2-check__label" + (labelClass ? " " + labelClass : "")}><T>{label}</T></span>
-      {note ? <span className="u2-check__note"><T>{note}</T></span> : null}
+      {note ? <span className="u2-check__note">{typeof note === "string" ? <T>{note}</T> : note}</span> : null}
     </button>
   );
 }
@@ -1325,7 +1482,7 @@ function DbList({ title, head, rows, note }) {
             {rows.map((r) => (
               <tr key={r[0]}>
                 <th scope="row"><T>{r[0]}</T></th>
-                {r.slice(1).map((v, i) => <td key={i}><T>{v}</T></td>)}
+                {r.slice(1).map((v, i) => <td key={i} className={STRONG_RE.test(v) ? "u2-red" : undefined}><T>{v}</T></td>)}
               </tr>
             ))}
           </tbody>
@@ -1335,6 +1492,89 @@ function DbList({ title, head, rows, note }) {
     </>
   );
 }
+/* 設定を確定・否定する示唆は赤で見分けられるようにする（データベース内の表示） */
+const STRONG_RE = /濃厚|否定/;
+
+/* データベースの1枚絵：押すと拡大 */
+const PicCard = ({ it, onOpen }) => (
+  <button type="button" className="u2-piccard" onClick={onOpen} aria-label={`1枚絵「${it.label}」を拡大する（${it.sub}）`}>
+    <PicImg k={it.k} />
+    <span className="u2-piccard__name">{it.label}</span>
+    <span className={"u2-piccard__sub" + (STRONG_RE.test(it.sub) ? " u2-red" : "")}><T>{it.sub}</T></span>
+  </button>
+);
+
+/* 1枚絵の拡大表示。前へ／次へ、左右キー、横スワイプで送る */
+function PicViewer({ index, onIndex, onClose }) {
+  const n = PICS.length;
+  const it = PICS[index];
+  const move = (d) => onIndex((index + d + n) % n);
+  const startX = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "ArrowLeft") move(-1);
+      else if (e.key === "ArrowRight") move(1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index]);
+  return (
+    <Sheet title={`1枚絵・${it.label}`} onClose={onClose}>
+      {/* 原寸を読み込むまでは、一覧で読み込み済みの縮小版を下に敷いておく */}
+      <div
+        className="u2-viewer"
+        style={{ backgroundImage: `url(${picSrc(it.k, true)})` }}
+        onPointerDown={(e) => { startX.current = e.clientX; }}
+        onPointerUp={(e) => {
+          if (startX.current === null) return;
+          const d = e.clientX - startX.current;
+          startX.current = null;
+          if (Math.abs(d) > 40) move(d < 0 ? 1 : -1);
+        }}
+        onPointerCancel={() => { startX.current = null; }}
+      >
+        <PicImg key={it.k} k={it.k} big alt={`1枚絵：${it.label}`} />
+      </div>
+      <p className="u2-viewer__cap">
+        <span className="u2-viewer__grp"><T>{`BB中・${it.g}`}</T></span>
+        <span className={STRONG_RE.test(it.sub) ? "u2-red" : ""}><T>{it.sub}</T></span>
+      </p>
+      <div className="u2-viewer__nav">
+        <button type="button" className="um-btn um-btn--small" onClick={() => move(-1)} aria-label="前の1枚絵">前へ</button>
+        <span className="u2-viewer__pos" aria-live="polite"><span className="um-num">{index + 1}</span> / <span className="um-num">{n}</span></span>
+        <button type="button" className="um-btn um-btn--small" onClick={() => move(1)} aria-label="次の1枚絵">次へ</button>
+      </div>
+    </Sheet>
+  );
+}
+
+/* 転落時のボイス：1行目に名前と示唆、2行目にセリフ（細い表の列に入れるとセリフが細切れになるため） */
+const VoiceList = ({ title, items, note }) => (
+  <>
+    <GroupHead minor name={title} />
+    <ul className="u2-voices">
+      {items.map((v) => (
+        <li key={v.who} className="u2-voice">
+          <span className="u2-voice__head">
+            <span className="u2-voice__who"><T>{v.who}</T></span>
+            <span className={"u2-voice__hint" + (STRONG_RE.test(v.hint) ? " u2-red" : "")}><T>{v.hint}</T></span>
+          </span>
+          {v.line ? <span className="u2-voice__line"><T>{`「${v.line}」`}</T></span> : null}
+        </li>
+      ))}
+    </ul>
+    {note ? <p className="u2-note"><T>{note}</T></p> : null}
+  </>
+);
+
+/* 演出の一覧（1項目ずつ途中で改行しない。区切りの「／」は行頭に来ないよう前の項目に付ける） */
+const SrcList = ({ items }) =>
+  items.map((s, i) => (
+    <React.Fragment key={i}>
+      {i ? <wbr /> : null}
+      <span className="u2-src"><T>{s + (i < items.length - 1 ? "／" : "")}</T></span>
+    </React.Fragment>
+  ));
 
 function Sheet({ title, onClose, children }) {
   const ref = useRef(null);
@@ -1395,22 +1635,22 @@ const TABS = [
 ];
 
 /* 運命分岐モードから即転落（ART未突入かつ1回目の転落リプレイで転落）した時のボイス。
-   セリフの本文は作品の台詞なので収録していない。line に書き足すと、表にセリフの列が出る */
+   line はセリフで、データベースでは名前と示唆の下に表示する */
 const FALL_VOICES = [
   { who: "右代宮 秀吉", hint: "デフォルト", line: "悪魔や!悪魔の仕業や!" },
-  { who: "南條 輝正", hint: "奇数設定期待度UP", line: "残念だが、手の施しようがない…" },
-  { who: "右代宮 金蔵", hint: "奇数設定期待度UP", line: "おぉおおおおぉぉ!!ベアトリーチェぇえええ!!" },
-  { who: "右代宮 夏妃", hint: "偶数設定期待度UP", line: "もう……私を…許してッ…!" },
-  { who: "右代宮 楼座", hint: "偶数設定期待度UP", line: "私はなんて、馬鹿なママだったの…!!" },
-  { who: "右代宮 縁寿", hint: "設定2以上期待度UP", line: "ここはあなたのいるべき世界じゃないわ" },
-  { who: "ドラノール", hint: "設定2以上期待度UP", line: "ここがアナタの墓場となり、残念デス" },
+  { who: "南條 輝正", hint: "奇数設定の期待度UP", line: "残念だが、手の施しようがない…" },
+  { who: "右代宮 金蔵", hint: "奇数設定の期待度UP", line: "おぉおおおおぉぉ!!ベアトリーチェぇえええ!!" },
+  { who: "右代宮 夏妃", hint: "偶数設定の期待度UP", line: "もう……私を…許してッ…!" },
+  { who: "右代宮 楼座", hint: "偶数設定の期待度UP", line: "私はなんて、馬鹿なママだったの…!!" },
+  { who: "右代宮 縁寿", hint: "設定2以上の期待度UP", line: "ここはあなたのいるべき世界じゃないわ" },
+  { who: "ドラノール", hint: "設定2以上の期待度UP", line: "ここがアナタの墓場となり、残念デス" },
   { who: "ウィル", hint: "設定3以上濃厚", line: "挫けるんじゃねぇ。足掻いて、足掻くんだよ…!!" },
   { who: "ベルンカステル", hint: "設定3以上濃厚", line: "グッバイ、ハバナイスディ" },
   { who: "ベアトリーチェ（雛）", hint: "設定4以上濃厚", line: "どうして私は……戦人さんを好きなの…?" },
   { who: "ベアトリーチェ", hint: "設定5以上濃厚", line: "あっひゃははははっ!!" },
 ];
 const CHO_PA = [
-  ["「22%」", "設定2以上期待度UP"],
+  ["「22%」", "設定2以上の期待度UP"],
   ["「33%」", "設定3以上濃厚"],
   ["「44%」", "設定4以上濃厚"],
   ["「55%」", "設定5以上濃厚"],
@@ -1444,7 +1684,7 @@ function Umineko2Settei() {
   const st = S.st;
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState("bonus");
-  const [sheet, setSheet] = useState(null); // "history" | "detail" | { edit: key }
+  const [sheet, setSheet] = useState(null); // "history" | "detail" | { edit: key } | { pic: 1枚絵の番号 }
   const [notice, setNotice] = useState(null);
   const [saveErr, setSaveErr] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -1469,6 +1709,30 @@ function Umineko2Settei() {
     link.href = FONT_HREF;
     document.head.appendChild(pre);
     document.head.appendChild(link);
+  }, []);
+
+  /* 文節区切り（BudouX）の読み込み。読めたら文節の切れ目で折り返す表示に切り替える */
+  const [phrased, setPhrased] = useState(!!phraser);
+  useEffect(() => {
+    if (phraser) return;
+    let alive = true;
+    importModule(BUDOUX_URL)
+      .then((m) => { phraser = m.loadDefaultJapaneseParser(); if (alive) setPhrased(true); })
+      .catch(() => { /* 読めなければ標準の折り返しのまま */ });
+    return () => { alive = false; };
+  }, []);
+
+  /* タブの帯：右にまだタブが隠れている間だけ、右端をぼかして続きがあることを示す */
+  const [tabsAtEnd, setTabsAtEnd] = useState(false);
+  const checkTabsEnd = () => {
+    const el = tabsRef.current && tabsRef.current.firstElementChild;
+    if (el) setTabsAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 4);
+  };
+  useEffect(() => {
+    checkTabsEnd();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(checkTabsEnd);
+    window.addEventListener("resize", checkTabsEnd);
+    return () => window.removeEventListener("resize", checkTabsEnd);
   }, []);
 
   /* 読み込み（記録と履歴） */
@@ -1711,7 +1975,7 @@ function Umineko2Settei() {
     bonus: (
       <>
         <NumField label="総ゲーム数" value={st.totalG} onChange={(v) => set("totalG", v, { coalesce: "totalG" })} />
-        <p className="u2-note">当たったボーナスの枠で、当選契機のマスを1回押すだけ。回数と特定ボーナスが同時に記録されます。</p>
+        <p className="u2-note"><T>当たったボーナスの枠で、当選契機のマスを1回押すだけ。回数と特定ボーナスが同時に記録されます。</T></p>
         {GROUPS.map((g) => {
           const n = groupTotal(st, g);
           return (
@@ -1731,7 +1995,6 @@ function Umineko2Settei() {
           <Observed label="特定ボーナス合算" value={obs(totalG, spTotal, 1, SP_TOTAL)} />
           <Observed label="契機を確認した割合" value={bonusTotal ? `${fmt((checkedTotal / bonusTotal) * 100)}%（${checkedTotal}/${bonusTotal}）` : "–"} />
         </div>
-        <p className="u2-note">特定ボーナス合算の目安は設定1 1/606.8、設定6 1/428.3。</p>
       </>
     ),
     rb: (
@@ -1742,14 +2005,14 @@ function Umineko2Settei() {
           {tile("heiko", "青7平行揃い", "1/148.3、設定差なし")}
         </div>
         <div className="u2-obsgrid u2-obsgrid--one">
-          <Observed label="青7斜め" value={obs(num(st.rbG), st.naname, 1, P.b7naname)} />
+          <Observed label="青7斜め揃い" value={obs(num(st.rbG), st.naname, 1, P.b7naname)} />
         </div>
         <Divider>キャラ紹介の背景</Divider>
-        <p className="u2-note">全て銀なら設定2以上、全て金なら設定6が濃厚。数えた割合は推定に入れていません。</p>
+        <p className="u2-note"><T>高設定の期待度は通常＜銀＜金の順に上がり、全て銀なら設定2以上、全て金なら設定6が濃厚です。背景ごとの出現率は未公表のため、数えた割合は推定に入れていません。</T></p>
         <div className="u2-tiles u2-tiles--3">
-          {tile("rbBgNormal", "通常", "割合は未判明")}
-          {tile("rbBgSilver", "銀", "割合は未判明")}
-          {tile("rbBgGold", "金", "割合は未判明")}
+          {tile("rbBgNormal", "通常")}
+          {tile("rbBgSilver", "銀")}
+          {tile("rbBgGold", "金")}
         </div>
         <div className="u2-obsgrid">
           <Observed label="銀の割合" value={rbBgTotal ? `${fmt((st.rbBgSilver / rbBgTotal) * 100)}%` : "–"} />
@@ -1761,19 +2024,19 @@ function Umineko2Settei() {
       <>
         <Divider>ハズレ成立時の真実ポイント</Divider>
         <div className="u2-tiles">
-          {tile("bbMiss0", "0pt")}
-          {tile("bbMiss3", "3pt", "70.3%→80.1%")}
+          {tile("bbMiss0", "0pt", `${fmt(D.bbMiss.p0[0])}%→${fmt(D.bbMiss.p0[5])}%`)}
+          {tile("bbMiss3", "3pt", `${fmt(D.bbMiss.p3[0])}%→${fmt(D.bbMiss.p3[5])}%`)}
         </div>
         <div className="u2-obsgrid u2-obsgrid--one">
           <Observed label="3pt獲得率" value={st.bbMiss0 + st.bbMiss3 ? `${fmt((st.bbMiss3 / (st.bbMiss0 + st.bbMiss3)) * 100)}%` : "–"} />
         </div>
         <Divider>1枚絵（ビタ押し成功時）</Divider>
-        <p className="u2-note">1枚絵の示唆は推定計算には入れていません。「朱志香」「シエスタ姉妹」「縁寿＆7姉妹」「ミニキャラ」は、数えると濃厚要素に自動で反映されます。</p>
+        <p className="u2-note"><T>否定・濃厚の1枚絵は、数えると「濃厚」タブにも自動で反映されます。期待度の示唆は推定に入れていません。</T></p>
         {ART_PIC.map((grp) => (
           <div key={grp.g}>
             <GroupHead minor name={grp.g} right={`計 ${grp.items.reduce((a, it) => a + (st[it.k] || 0), 0)}`} />
-            <div className="u2-tiles">
-              {grp.items.map((it) => tile(it.k, it.label, it.sub, { red: it.tone === "red" }))}
+            <div className="u2-tiles u2-tiles--pic">
+              {grp.items.map((it) => tile(it.k, <PicLabel k={it.k} name={it.label} />, it.sub, { red: it.tone === "red" }))}
             </div>
           </div>
         ))}
@@ -1789,26 +2052,25 @@ function Umineko2Settei() {
         </div>
         <Divider>小役（ART中のみ）</Divider>
         <div className="u2-tiles">
-          {tile("bell", "共通ベル", "ナビなしベル")}
-          {tile("artMiss", "ハズレ", "リーチ目を含む")}
+          {tile("bell", "共通ベル（ナビなし）", `1/${fmt(P.bell[0])}→1/${fmt(P.bell[5])}`)}
+          {tile("artMiss", "ハズレ・リーチ目", `1/${fmt(P.artMiss[0])}→1/${fmt(P.artMiss[5])}`)}
         </div>
         <div className="u2-obsgrid u2-obsgrid--one">
           <Observed label="共通ベル" value={obs(artG, st.bell, 2, P.bell)} />
           <Observed label="ハズレ" value={obs(artG, st.artMiss, 1, P.artMiss)} />
         </div>
-        <p className="u2-note">共通ベルは設定1→6で1/29.4→1/21.0。</p>
 
         <Divider>周期到達時の初期真実ポイント</Divider>
-        <p className="u2-note">周期（CZ間200G）から運命分岐モードに入った時だけ数えます。</p>
+        <p className="u2-note"><T>周期（CZ間200G）から運命分岐モードに入った時だけ数えます。</T></p>
         <div className="u2-tiles">
-          {tile("cycle30", "30pt")}
-          {tile("cycle50", "50pt")}
-          {tile("cycle70", "70pt", "全設定共通12.5%")}
-          {tile("cycle200", "200pt", "1.6%→5.1%")}
+          {tile("cycle30", "30pt", `${fmt(D.cycle.p30[0])}%→${fmt(D.cycle.p30[5])}%`)}
+          {tile("cycle50", "50pt", `${fmt(D.cycle.p50[0])}%→${fmt(D.cycle.p50[5])}%`)}
+          {tile("cycle70", "70pt", "12.5%、設定差なし")}
+          {tile("cycle200", "200pt", `${fmt(D.cycle.p200[0])}%→${fmt(D.cycle.p200[5])}%`)}
         </div>
 
         <Divider>Lv.2ナビ</Divider>
-        <p className="u2-note">解析値にLv.2成立抽選（75%）を掛けた値で判定します。逆転リプレイ、逆転チェリーは含めません。</p>
+        <p className="u2-note"><T>解析値にLv.2成立抽選（75%）を掛けた値で判定します。逆転リプレイ、逆転チェリーは含めません。</T></p>
         {LV2_ROWS.map((r) => (
           <div key={r.row}>
             <GroupHead
@@ -1828,8 +2090,8 @@ function Umineko2Settei() {
       <>
         <Divider>ステージチェンジのロゴ発光（偶奇判別）</Divider>
         <div className="u2-tiles">
-          {tile("logoS", "発光・小")}
-          {tile("logoL", "発光・大")}
+          {tile("logoS", "発光・小", "奇数設定で多い")}
+          {tile("logoL", "発光・大", "偶数設定で多い")}
         </div>
         <div className="u2-obsgrid u2-obsgrid--one">
           <Observed label="大の割合" value={st.logoS + st.logoL ? `${fmt((st.logoL / (st.logoS + st.logoL)) * 100)}%` : "–"} />
@@ -1845,24 +2107,24 @@ function Umineko2Settei() {
             checked={!!st.conf[r.k]}
             onChange={(v) => { feel(); commit((s) => ({ ...s, conf: { ...s.conf, [r.k]: v } })); }}
             label={r.label}
-            note={r.src}
+            note={<SrcList items={r.src} />}
             labelClass={st.conf[r.k] ? "um-truth um-truth--red" : ""}
           />
         ))}
         <Divider>期待度の示唆（推定には入れていません）</Divider>
-        <div className="u2-tiles">
-          {tile("memoOdd", "奇数設定 期待度UP", "転落ボイス 南條・金蔵")}
-          {tile("memoEven", "偶数設定 期待度UP", "転落ボイス 夏妃・楼座")}
-          {tile("memo2", "設定2以上 期待度UP", "縁寿・ドラノール／超パー22%")}
+        <div className="u2-tiles u2-tiles--wide">
+          {tile("memoOdd", "奇数設定", "転落ボイス 南條・金蔵")}
+          {tile("memoEven", "偶数設定", "転落ボイス 夏妃・楼座")}
+          {tile("memo2", "設定2以上", <SrcList items={["転落ボイス 縁寿・ドラノール", "超パー「22%」"]} />)}
         </div>
       </>
     ),
     db: (
       <>
         <p className="u2-db-src">
-          このツールが設定判別に使っている値の一覧です。出典：
-          <a className="um-link" href={SOURCE_URL} target="_blank" rel="noopener noreferrer">ちょんぼりすた（うみねこのなく頃に２ 機種ページ）</a>
-          <T>。2026年6月20日更新時点の値です。</T>
+          <T>このツールが設定判別に使っている値の一覧です。出典は</T>
+          <a className="um-link" href={SOURCE_URL} target="_blank" rel="noopener noreferrer">ちょんぼりすた</a>
+          <T>の機種ページ（2026年6月20日更新時点）です。</T>
         </p>
 
         <Divider>推定に使っている値</Divider>
@@ -1925,21 +2187,22 @@ function Umineko2Settei() {
         />
 
         <Divider>演出ごとの示唆</Divider>
-        <p className="u2-note">濃厚となる演出を見たら「濃厚」タブでチェックすると、推定の下限に反映されます。1枚絵は数えるだけで自動で反映されます。</p>
+        <p className="u2-note"><T>濃厚となる演出を見たら「濃厚」タブでチェックすると、推定の下限に反映されます。1枚絵は数えるだけで自動で反映されます。</T></p>
+        <p className="u2-note"><T>BB中の1枚絵は、予告発生時のビタ押しに成功すると出ます。初代BBも示唆内容は同じです。画像を押すと拡大します。</T></p>
         {ART_PIC.map((grp) => (
-          <DbList
-            key={grp.g}
-            title={`BB中の1枚絵・${grp.g}`}
-            head={["1枚絵", "示唆"]}
-            rows={grp.items.map((it) => [it.label, it.sub])}
-          />
+          <div key={grp.g}>
+            <GroupHead minor name={`BB中の1枚絵・${grp.g}`} />
+            <div className="u2-picgrid">
+              {grp.items.map((it) => (
+                <PicCard key={it.k} it={it} onOpen={() => setSheet({ pic: PICS.findIndex((p) => p.k === it.k) })} />
+              ))}
+            </div>
+          </div>
         ))}
-        <p className="u2-note">ビタ押し成功時（予告発生時に限る）の1枚絵。初代BBも示唆内容は同じです。</p>
-        <DbList
+        <VoiceList
           title="転落時のボイス"
-          head={FALL_VOICES.some((v) => v.line) ? ["キャラ", "セリフ", "示唆"] : ["キャラ", "示唆"]}
-          rows={FALL_VOICES.map((v) => (FALL_VOICES.some((x) => x.line) ? [v.who, v.line || "–", v.hint] : [v.who, v.hint]))}
-          note="運命分岐モードから即転落（ART未突入かつ1回目の転落リプレイで転落）した時のボイスです。"
+          items={FALL_VOICES}
+          note="運命分岐モード中、ARTに入らないまま1回目の転落リプレイで転落した時のボイスです。"
         />
         <DbList
           title="超パー演出"
@@ -1979,7 +2242,7 @@ function Umineko2Settei() {
           label="押したときに短く振動する"
           note="対応する端末のみ（iPhoneは非対応）"
         />
-        <p className="u2-note">マスを押すと＋1、右端の−で1減らします。長押し（PCは右クリック）で数値を直接入力できます。押し間違えたら、画面下の戻すボタンで取り消せます。</p>
+        <p className="u2-note"><T>マスを押すと＋1、右端の−で1減らします。長押し（PCは右クリック）で数値を直接入力できます。押し間違えたら、画面下の戻すボタンで取り消せます。</T></p>
         <Divider>記録</Divider>
         <div className="um-btn-row u2-actions">
           <button type="button" className="um-btn um-btn--primary" onClick={copy}>集計をコピーする</button>
@@ -1988,7 +2251,7 @@ function Umineko2Settei() {
           </button>
         </div>
         {summary ? <textarea readOnly value={summary} rows={10} className="u2-summary" aria-label="集計" /> : null}
-        <p className="u2-note">入力は自動で保存され、次に開いた時もそのまま残ります。記録を消した場合も、戻すで元に戻せます。</p>
+        <p className="u2-note"><T>入力は自動で保存され、次に開いた時もそのまま残ります。記録を消した場合も、画面下の戻すボタンで元に戻せます。</T></p>
       </>
     ),
   };
@@ -1998,17 +2261,18 @@ function Umineko2Settei() {
   const applied = S.past.length;
 
   return (
-    <div className="um-page u2-root">
+    <div className={"um-page u2-root" + (phrased ? " is-phrased" : "")}>
       <style dangerouslySetInnerHTML={{ __html: UM_CSS + TOOL_CSS }} />
       <div className="u2-wrap">
         <header className="u2-head">
-          <h1 className="u2-title"><span className="um-truth um-truth--gold">うみねこのなく頃に２　設定判別ツール</span></h1>
+          {/* 機種名の途中（「頃に｜２」）で改行しないよう、機種名とツール名の2つに分けておく */}
+          <h1 className="u2-title"><span className="um-truth um-truth--gold"><span className="u2-ph">うみねこのなく頃に２　</span><wbr /><span className="u2-ph">設定判別ツール</span></span></h1>
           <p className="u2-sub um-latin">Reading the board from what you counted</p>
         </header>
         <hr className="um-chess u2-chess" />
 
         <nav className="u2-tabs" ref={tabsRef} aria-label="記録する場面">
-          <div className="u2-tabs__in" role="tablist">
+          <div className={"u2-tabs__in" + (tabsAtEnd ? " is-end" : "")} role="tablist" onScroll={checkTabsEnd}>
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -2153,6 +2417,11 @@ function Umineko2Settei() {
             </div>
           ) : null}
         </Sheet>
+      ) : null}
+
+      {/* 1枚絵の拡大 */}
+      {sheet && sheet.pic !== undefined ? (
+        <PicViewer index={sheet.pic} onIndex={(i) => setSheet({ pic: i })} onClose={() => setSheet(null)} />
       ) : null}
 
       {/* 直接入力 */}
