@@ -12,6 +12,7 @@
 | `garupan/` | ガルパン最終章 設定判別 |
 | `starlight/` | レヴュースタァライト 設定判別 |
 | `kyokou/` | L虚構推理 設定判別 |
+| `umineko/` | Lうみねこのなく頃に2 設定判別 |
 | `rk-lines.txt` | RKちゃまの台詞 |
 | `rk.png` | RKちゃまの立ち絵 |
 
@@ -40,6 +41,7 @@
 | ガルパン | `garupan_v1` |
 | スタァライト | `starlight_v1` |
 | 虚構推理 | `kyokou_suiri_v1` |
+| うみねこ2 | `umineko2-settei-v1`（記録）<br>`umineko2-settei-v1:history`（操作履歴） |
 
 `localStorage` は**オリジン（ドメイン）ごと**に保存されます。
 公開先の URL が変わると以前のデータは読めなくなるため、URL が固定される GitHub Pages を使ってください。

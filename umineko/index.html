@@ -1,0 +1,2137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b0916">
+<title>うみねこのなく頃に２ 設定判別</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="favicon.png">
+<!-- 書体は先に読み込んでおく（本体は id="um-fonts" があれば二重に読まない） -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="um-fonts" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400;1,500&family=Shippori+Mincho+B1:wght@400;500;700;800&display=swap">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  /* 本体の地色に合わせて余白の白を消す */
+  html,body{margin:0; background:#0b0916;}
+  body{-webkit-tap-highlight-color:transparent;}
+  /* ツール一覧への戻りリンク。位置と大きさは他ツールと揃え、色だけ夜の盤面に合わせる */
+  .portal-back{display:flex; align-items:center; gap:6px; padding:11px 16px;
+    font:500 13px/1 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    color:#c8b98f; background:#0b0916; border-bottom:1px solid rgba(200,160,74,.28); text-decoration:none;}
+  .portal-back:active{background:#15112a; color:#f3dc8f;}
+</style>
+</head>
+<body>
+<a class="portal-back" href="../">← ツール一覧</a>
+<div id="root"></div>
+<script type="text/babel">
+/* @jsxRuntime classic */
+/* Babel 8 の自動JSXランタイムだと `import` が生成されて動かないため classic を明示 */
+const { useEffect, useMemo, useReducer, useRef, useState } = React;
+
+/* ============================================================
+   うみねこのなく頃に２ — 設定判別ツール
+   解析値の出典: ちょんぼりすた（2026/06/20 更新版）
+   見た目: umineko-web-design スキル（依存なし・Tailwind不要）
+   操作: タブ切替・マス目カウンター・戻す／進む・操作履歴
+   ============================================================ */
+
+/* ---- 1G あたりの確率（分母） ---- */
+const P = {
+  bigD: [1424.7, 1365.3, 1310.7, 1260.3, 1213.6, 1170.3], // 同色BIG合算
+  bigI: [485.5, 471.5, 455.1, 442.8, 434.0, 428.3],       // 異色BIG合算
+  reg: [397.2, 390.1, 381.0, 374.5, 366.1, 360.1],        // REG
+  bell: [29.4, 28.3, 26.5, 22.6, 21.5, 21.0],             // 共通ベル
+  artMiss: [56.2, 55.4, 53.8, 52.3, 51.5, 50.3],          // ART中ハズレ
+  b7naname: [555.4, 474.9, 442.8, 300.6, 268.6, 258.0],   // RB中 青7斜め
+  b7heiko: 148.3,                                          // RB中 青7平行（設定差なし）
+};
+
+/* ---- 振り分け（％） ---- */
+const D = {
+  cycle: {
+    p30: [45.3, 44.5, 43.0, 41.8, 40.6, 34.8],
+    p50: [40.6, 41.0, 41.4, 41.8, 42.2, 47.6],
+    p70: [12.5, 12.5, 12.5, 12.5, 12.5, 12.5],
+    p200: [1.6, 2.0, 3.1, 3.9, 4.7, 5.1],
+  },
+  logo: {
+    small: [29.2, 25.0, 31.3, 25.0, 33.3, 25.0],
+    large: [70.8, 75.0, 68.8, 75.0, 66.7, 75.0],
+  },
+  lv2: {
+    /* 解析値は「Lv.2が成立した場合」の振り分け。
+       実際にナビを確認できるのは、そもそもLv.2成立の抽選（75%）を通った時だけなので、
+       観測される確率は解析値 × 0.75 になる。 */
+    establish: 0.75,
+    d: [70.3, 71.1, 72.7, 74.2, 78.1, 80.1],   // 同色BB後
+    i: [5.1, 5.5, 5.9, 8.6, 10.2, 12.5],       // 異色BB後
+    o: [1.6, 2.0, 2.3, 3.9, 5.1, 5.9],         // REG後・その他
+  },
+  bbMiss: {
+    p0: [29.7, 28.9, 27.3, 25.8, 21.9, 19.9],
+    p3: [70.3, 71.1, 72.7, 74.2, 78.1, 80.1],
+  },
+};
+
+/* ---- 設定差のあるボーナス重複（特定ボーナス）----
+   g: 属するボーナス種別。総回数の内訳として扱い、二重計上を避ける */
+const SP = [
+  { k: "spCC", g: "same", label: "1枚役C ＋ 赤7同色", p: [16384.0, 13107.2, 10922.7, 9362.3, 8192.0, 7281.8] },
+  { k: "spBW", g: "same", label: "1枚役B ＋ 白7同色", p: [7281.8, 6553.6, 5957.8, 5461.3, 5041.2, 4681.1] },
+  { k: "spKA", g: "ish", label: "確定役A ＋ 赤赤白", p: [16384.0, 13107.2, 10922.7, 9362.3, 8192.0, 7281.8] },
+  { k: "spBRW", g: "ish", label: "1枚役B ＋ 赤赤白", p: [5957.8, 5461.3, 5041.2, 4681.1, 4681.1, 4681.1] },
+  { k: "spCRW", g: "ish", label: "1枚役C ＋ 赤赤白", p: [5041.2, 4681.1, 4369.1, 4096.0, 3855.1, 3640.9] },
+  { k: "spBWR", g: "ish", label: "1枚役B ＋ 白白赤", p: [5041.2, 4681.1, 4369.1, 4096.0, 4096.0, 4096.0] },
+  { k: "spCWR", g: "ish", label: "1枚役C ＋ 白白赤", p: [5461.3, 5461.3, 5041.2, 5041.2, 4681.1, 4681.1] },
+  { k: "spBellR", g: "reg", label: "共通ベル ＋ 赤赤青", p: [4681.1, 4369.1, 4096.0, 3855.1, 3640.9, 3449.3] },
+  { k: "spCR", g: "reg", label: "1枚役C ＋ 赤赤青", p: [3640.9, 3640.9, 3449.3, 3449.3, 3276.8, 3276.8] },
+  { k: "spRepR", g: "reg", label: "リプレイ ＋ 赤赤青", p: [13107.2, 10922.7, 9362.3, 8192.0, 7281.8, 6553.6] },
+  { k: "spRepW", g: "reg", label: "リプレイ ＋ 白白青", p: [13107.2, 10922.7, 9362.3, 8192.0, 7281.8, 6553.6] },
+];
+const SP_TOTAL = [606.8, 560.1, 512.0, 478.4, 448.9, 428.3]; // 特定ボーナス合算
+const SP_GROUPS = [
+  { key: "same", label: "同色BIG（黄金郷）", nKey: "bigD", chk: "chkSame" },
+  { key: "ish", label: "異色BIG（WITCH）", nKey: "bigI", chk: "chkIsh" },
+  { key: "reg", label: "REG", nKey: "reg", chk: "chkReg" },
+];
+const CHK = { same: "chkSame", ish: "chkIsh", reg: "chkReg" };
+
+/* ---- BB中の1枚絵（示唆内容。出現割合は未解析なので推定には入れない） ---- */
+const ART_PIC = [
+  {
+    g: "1回目",
+    items: [
+      { k: "picBattler", label: "戦人", sub: "デフォルト" },
+      { k: "picMaria", label: "真里亞", sub: "偶数期待度UP" },
+      { k: "picJessica", label: "朱志香", sub: "設定1否定", tone: "red" },
+      { k: "picGeorge", label: "譲治", sub: "設定2以上期待度UP" },
+    ],
+  },
+  {
+    g: "2回目以降",
+    items: [
+      { k: "picZepar", label: "ゼパル・フルフル", sub: "奇数期待度UP" },
+      { k: "picEnjeErika", label: "縁寿・ヱリカ", sub: "偶数期待度UP" },
+      { k: "picOba", label: "叔母", sub: "設定2以上期待度UP" },
+      { k: "picSiesta", label: "シエスタ姉妹", sub: "設定1否定", tone: "red" },
+      { k: "artEnjoNanashimai", label: "縁寿＆7姉妹", sub: "設定4以上濃厚", tone: "red" },
+      { k: "artMiniChara", label: "ミニキャラ", sub: "設定6濃厚", tone: "red" },
+    ],
+  },
+];
+const ART_LEN = { artLv1: 30, artLv2: 50, artLv3: 90 };
+
+/* Lv.2ナビの実効確率（解析値 × Lv.2成立率75%） */
+const lv2p = (row, i) => (D.lv2[row][i] / 100) * D.lv2.establish;
+const LV2_ROWS = [
+  { row: "d", nKey: "lv2dN", kKey: "lv2dK", label: "同色BB後" },
+  { row: "i", nKey: "lv2iN", kKey: "lv2iK", label: "異色BB後" },
+  { row: "o", nKey: "lv2oN", kKey: "lv2oK", label: "REG後・その他" },
+];
+
+const PAYOUT = [98.4, 99.6, 101.2, 103.4, 104.7, 105.5];
+const PAYOUT_MAX = [103.0, 104.1, 105.8, 108.0, 109.2, 110.0];
+
+const STORE_KEY = "umineko2-settei-v1";
+
+/* 保存先アダプタ。
+   Claudeのアーティファクト上では window.storage、
+   通常のWebサイトに載せた場合は localStorage を使う。 */
+const store = {
+  async load(key) {
+    if (typeof window === "undefined") return null;
+    if (window.storage && typeof window.storage.get === "function") {
+      const r = await window.storage.get(key);
+      return r && r.value ? r.value : null;
+    }
+    return window.localStorage.getItem(key);
+  },
+  async save(key, text) {
+    if (typeof window === "undefined") return;
+    if (window.storage && typeof window.storage.set === "function") {
+      await window.storage.set(key, text);
+      return;
+    }
+    window.localStorage.setItem(key, text);
+  },
+};
+
+const emptyState = () => ({
+  totalG: "",
+  oSame: 0, // 同色BIG：特定以外の契機を確認
+  uSame: 0, // 同色BIG：契機不明
+  oIsh: 0,
+  uIsh: 0,
+  oReg: 0,
+  uReg: 0,
+  spCC: 0,
+  spBW: 0,
+  spKA: 0,
+  spBRW: 0,
+  spCRW: 0,
+  spBWR: 0,
+  spCWR: 0,
+  spBellR: 0,
+  spCR: 0,
+  spRepR: 0,
+  spRepW: 0,
+  artLv1: 0,
+  artLv2: 0,
+  artLv3: 0,
+  bell: 0,
+  artMiss: 0,
+  rbG: "",
+  naname: 0,
+  heiko: 0,
+  rbBgNormal: 0,
+  rbBgSilver: 0,
+  rbBgGold: 0,
+  bbMiss0: 0,
+  bbMiss3: 0,
+  cycle30: 0,
+  cycle50: 0,
+  cycle70: 0,
+  cycle200: 0,
+  logoS: 0,
+  logoL: 0,
+  lv2dN: 0,
+  lv2dK: 0,
+  lv2iN: 0,
+  lv2iK: 0,
+  lv2oN: 0,
+  lv2oK: 0,
+  conf: { s2: false, s3: false, s4: false, s5: false, s6: false },
+  memoOdd: 0,
+  memoEven: 0,
+  memo2: 0,
+  picBattler: 0,
+  picMaria: 0,
+  picJessica: 0,
+  picGeorge: 0,
+  picZepar: 0,
+  picEnjeErika: 0,
+  picOba: 0,
+  picSiesta: 0,
+  artEnjoNanashimai: 0, // 縁寿＆7姉妹（設定4以上濃厚）
+  artMiniChara: 0,      // ミニキャラ（設定6濃厚）
+  prior: "flat",
+  vibrate: true,
+});
+
+const PRIORS = {
+  flat: [1, 1, 1, 1, 1, 1],
+  low: [40, 20, 15, 12, 8, 5],
+};
+
+const num = (v) => {
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[^0-9.]/g, ""));
+  return isFinite(n) && n > 0 ? n : 0;
+};
+const ln = Math.log;
+
+/* ART総ゲーム数 = 30×Lv.1 + 50×Lv.2 + 90×Lv.3 */
+const artGames = (st) =>
+  30 * (st.artLv1 || 0) + 50 * (st.artLv2 || 0) + 90 * (st.artLv3 || 0);
+
+/* 特定ボーナスの種別ごとの合計回数 */
+const spSum = (st, g) => SP.filter((s) => s.g === g).reduce((a, s) => a + (st[s.k] || 0), 0);
+
+/* 二項 / 多項の対数尤度（定数項は設定間で共通なので省略） */
+const logCat = (counts, probs) => {
+  let s = 0;
+  for (let i = 0; i < counts.length; i++) {
+    if (counts[i] > 0) {
+      const p = probs[i];
+      if (p <= 0) return -Infinity;
+      s += counts[i] * ln(p);
+    }
+  }
+  return s;
+};
+
+function computePosterior(st) {
+  const logs = [0, 0, 0, 0, 0, 0];
+  const detail = [];
+
+  const push = (name, obs, per, arr) => detail.push({ name, obs, per, arr });
+
+  for (let i = 0; i < 6; i++) {
+    let L = 0;
+
+    // ボーナス（多項）。特定ボーナスは各種別の内訳として扱う
+    const G = num(st.totalG);
+    if (G > 0) {
+      const groups = [
+        { key: "same", total: 1 / P.bigD[i], n: st.bigD },
+        { key: "ish", total: 1 / P.bigI[i], n: st.bigI },
+        { key: "reg", total: 1 / P.reg[i], n: st.reg },
+      ];
+      let usedN = 0, usedP = 0;
+      for (const g of groups) {
+        let sp = 0, spn = 0;
+        for (const s of SP) {
+          if (s.g !== g.key) continue;
+          const c = st[s.k] || 0;
+          const p = 1 / s.p[i];
+          sp += p;
+          spn += c;
+          if (c > 0) L += c * ln(p);
+        }
+        // 契機を確認した分は「特定ではなかった」ことも情報になる。
+        // 未確認の分は契機不明として、その種別の総確率で評価する。
+        const checked = st.allChecked
+          ? g.n
+          : Math.min(g.n, Math.max(num(st[CHK[g.key]]), spn));
+        const confirmedOther = Math.max(0, checked - spn);
+        const unchecked = Math.max(0, g.n - Math.max(checked, spn));
+        if (confirmedOther > 0) L += confirmedOther * ln(Math.max(g.total - sp, 1e-12));
+        if (unchecked > 0) L += unchecked * ln(g.total);
+        usedN += Math.max(g.n, spn);
+        usedP += g.total;
+      }
+      const restG = Math.max(0, G - usedN);
+      if (restG > 0) L += restG * ln(Math.max(1e-12, 1 - usedP));
+    }
+
+    // ART中の小役（多項：共通ベル / ハズレ / その他）
+    const AG = artGames(st);
+    if (AG > 0) {
+      const pb = 1 / P.bell[i], pm = 1 / P.artMiss[i];
+      const rest = Math.max(0, AG - st.bell - st.artMiss);
+      L += st.bell * ln(pb) + st.artMiss * ln(pm) + rest * ln(1 - pb - pm);
+    }
+
+    // RB中 青7斜め揃い
+    const RG = num(st.rbG);
+    if (RG > 0) {
+      const pn = 1 / P.b7naname[i];
+      const rest = Math.max(0, RG - st.naname);
+      L += st.naname * ln(pn) + rest * ln(1 - pn);
+    }
+
+    // 振り分け系
+    L += logCat(
+      [st.cycle30, st.cycle50, st.cycle70, st.cycle200],
+      [D.cycle.p30[i] / 100, D.cycle.p50[i] / 100, D.cycle.p70[i] / 100, D.cycle.p200[i] / 100]
+    );
+    L += logCat([st.logoS, st.logoL], [D.logo.small[i] / 100, D.logo.large[i] / 100]);
+    L += logCat([st.bbMiss0, st.bbMiss3], [D.bbMiss.p0[i] / 100, D.bbMiss.p3[i] / 100]);
+
+    // Lv.2ナビ（ART突入回数のうち発生回数）。確率は解析値×75%
+    for (const r of LV2_ROWS) {
+      const n = st[r.nKey];
+      if (n > 0) {
+        const k = Math.min(st[r.kKey], n);
+        const p = lv2p(r.row, i);
+        L += k * ln(p) + (n - k) * ln(1 - p);
+      }
+    }
+
+    logs[i] = L;
+  }
+
+  const maxL = Math.max(...logs);
+  let w = logs.map((l, i) => Math.exp(l - maxL) * PRIORS[st.prior][i]);
+
+  // 濃厚要素（赤き真実）による足切り
+  const min =
+    (st.conf.s6 && 6) || (st.conf.s5 && 5) || (st.conf.s4 && 4) || (st.conf.s3 && 3) || (st.conf.s2 && 2) || 1;
+  const only6 = st.conf.s6;
+  let masked = w.map((v, i) => {
+    const s = i + 1;
+    if (only6) return s === 6 ? v : 0;
+    return s >= min ? v : 0;
+  });
+  const sumM = masked.reduce((a, b) => a + b, 0);
+  if (sumM <= 0) masked = w.slice();
+
+  const sum = masked.reduce((a, b) => a + b, 0) || 1;
+  const post = masked.map((v) => v / sum);
+  return { post, min, detail };
+}
+
+/* 観測値に最も近い設定 */
+const nearest = (rate, table) => {
+  if (!rate) return null;
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < 6; i++) {
+    const d = Math.abs(1 / rate - 1 / table[i]);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best + 1;
+};
+const denom = (n, k) => (k > 0 && n > 0 ? n / k : 0);
+const fmt = (x, d = 1) => (isFinite(x) ? x.toFixed(d) : "–");
+
+/* ============================ 見た目 ============================
+   umineko-web-design スキルに準拠（スマホ向けに文字と余白を詰めた版）。
+   ・入力はタブで切り替え。1画面に1つの面だけを出して、上下の移動を減らす
+   ・数える項目は2列のマス。マスを押すと＋1、右端で−1、長押しで直接入力
+   ・画面下の盤面バーに、推定・直前の操作・戻す／進む・履歴をまとめる
+   ・青＝推定、赤＝濃厚要素で確定した事実、黄金の文字＝題のみ
+   ================================================================ */
+
+const FONT_HREF =
+  "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400;1,500&family=Shippori+Mincho+B1:wght@400;500;700;800&display=swap";
+
+/* スキル同梱の umineko.css（手を加えずに収録） */
+const UM_CSS = `
+/* ==========================================================================
+   umineko.css  ―  「魔女の盤上」デザインシステム
+   孤島の洋館・嵐の夜・黄金の蝶・赤と青の真実、という世界観をウェブ部品に翻訳したもの。
+   公式の画像・ロゴ・文章は一切含まない（雰囲気はすべて自作のモチーフで作る）。
+
+   必要フォント（<head> に置く）:
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400;1,500&family=Shippori+Mincho+B1:wght@400;500;700;800&display=swap" rel="stylesheet">
+   ========================================================================== */
+
+/* ---------- 1. トークン ---------- */
+:root {
+  /* 素の色（名前は世界観上の役割） */
+  --um-night: #0b0916;          /* 嵐の夜。基調の地色（紫みを帯びた藍黒） */
+  --um-night-2: #15112a;        /* 盤面。パネルの地色 */
+  --um-mansion: #2a0d1a;        /* 屋敷の臙脂。濃い面 */
+  --um-wine: #5a1428;           /* 葡萄酒。主ボタン・封蝋 */
+  --um-gold: #c8a04a;           /* 黄金。罫線・装飾・アクセント */
+  --um-gold-bright: #f3dc8f;    /* 蝶の燐光。強調・フォーカス */
+  --um-gold-deep: #6f531a;      /* 古い金。明色テーマでの文字用 */
+  --um-parchment: #eadfc4;      /* 羊皮紙。夜の上の本文色／手紙の地色 */
+  --um-ink: #2a1c14;            /* インク。羊皮紙の上の本文色 */
+  --um-witch: #7a4bb5;          /* 魔女の紫。メタ世界（カケラ）の面 */
+
+  /* 意味を持つ色 ― ここを使って組む */
+  --um-bg: var(--um-night);
+  --um-surface: var(--um-night-2);
+  --um-surface-deep: var(--um-mansion);
+  --um-text: var(--um-parchment);
+  --um-muted: #a99f8a;
+  --um-accent: var(--um-gold);
+  --um-accent-strong: var(--um-gold-bright);
+  --um-line: rgba(200, 160, 74, 0.42);
+  --um-line-faint: rgba(200, 160, 74, 0.16);
+  --um-on-accent: var(--um-night);
+
+  /* 真実の色（装飾に使わない。意味論は SKILL.md を参照） */
+  --um-truth-red: #ff2a44;
+  --um-truth-blue: #55b8ff;
+  --um-truth-gold: var(--um-gold-bright);
+  --um-truth-glow: 0.55;        /* 発光の強さ。明色テーマでは 0 */
+
+  /* ヒーロー（海と島） */
+  --um-sky-top: #0b0916;
+  --um-sky-low: #2b1840;
+  --um-horizon-glow: rgba(200, 160, 74, 0.2);
+  --um-sea: #070611;
+  --um-island: #04030a;
+  --um-title-halo: 0 0 1.2em rgba(243, 220, 143, 0.38);
+
+  /* 書体 */
+  --um-font-jp: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+  --um-font-latin: "Cormorant Garamond", "Hoefler Text", "Times New Roman", serif;
+
+  /* 文字サイズ（1.25 の音階） */
+  --um-step--1: 0.84rem;
+  --um-step-0: 1rem;
+  --um-step-1: 1.25rem;
+  --um-step-2: 1.563rem;
+  --um-step-3: 1.953rem;
+  --um-step-4: 2.441rem;
+  --um-step-5: 3.052rem;
+
+  /* 余白 */
+  --um-space-1: 0.5rem;
+  --um-space-2: 1rem;
+  --um-space-3: 1.5rem;
+  --um-space-4: 2.5rem;
+  --um-space-5: 4rem;
+  --um-space-6: 6.5rem;
+
+  --um-measure: 38em;           /* 和文の一行は 38 字前後まで */
+  --um-diamond: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M5 0l5 5-5 5-5-5z'/%3E%3C/svg%3E");
+}
+
+/* 「手紙」テーマ ― 昼の書斎・羊皮紙。明示的に指定されたときだけ使う。
+   この世界の標準は夜なので、OS が明色設定でも夜のままにしておく。 */
+:root[data-theme="light"] {
+  --um-bg: #e6d9ba;
+  --um-surface: #f1e7cd;
+  --um-surface-deep: #dccba3;
+  --um-text: var(--um-ink);
+  --um-muted: #6a5842;
+  --um-accent: #8a6a1e;
+  --um-accent-strong: var(--um-gold-deep);
+  --um-line: rgba(111, 83, 26, 0.5);
+  --um-line-faint: rgba(111, 83, 26, 0.2);
+  --um-on-accent: #f6eed8;
+  --um-truth-red: #b80d24;
+  --um-truth-blue: #14589f;
+  --um-truth-gold: var(--um-gold-deep);
+  --um-truth-glow: 0;
+  --um-sky-top: #e6d9ba;
+  --um-sky-low: #d9c69a;
+  --um-horizon-glow: rgba(138, 106, 30, 0.22);
+  --um-sea: #cdb98c;
+  --um-island: #b9a474;         /* 霞んだ遠景。題字と重なっても読める濃さに */
+  --um-title-halo: 0 0 0.25em #e6d9ba, 0 0 0.7em #e6d9ba;
+}
+
+/* ---------- 2. 土台 ---------- */
+.um-page {
+  margin: 0;
+  background: var(--um-bg);
+  color: var(--um-text);
+  font-family: var(--um-font-jp);
+  font-size: var(--um-step-0);
+  line-height: 1.95;
+  font-feature-settings: "palt";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.um-page *, .um-page *::before, .um-page *::after { box-sizing: border-box; }
+.um-page ::selection { background: var(--um-accent); color: var(--um-on-accent); }
+.um-page :focus-visible { outline: 2px solid var(--um-accent-strong); outline-offset: 3px; }
+
+.um-wrap { width: min(100% - 2.5rem, 68rem); margin-inline: auto; }
+.um-section { padding-block: var(--um-space-6); }
+.um-prose { max-width: var(--um-measure); }
+.um-prose p { margin: 0 0 1.2em; }
+.um-muted { color: var(--um-muted); }
+.um-link { color: var(--um-accent-strong); text-decoration-color: var(--um-line); text-underline-offset: 0.25em; }
+.um-link:hover { text-decoration-color: currentColor; }
+
+/* ---------- 3. 見出し ---------- */
+/* 和文の章題に、欧文イタリックの副題を添える（各話に欧文題が付く流儀から）。
+   副題は飾りではなく「この節が何か」を欧文で言い直すもの。無ければ付けない。 */
+.um-heading {
+  margin: 0 0 var(--um-space-3);
+  font-weight: 700;
+  font-size: var(--um-step-4);
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+}
+.um-heading__sub {
+  display: block;
+  margin-top: 0.35em;
+  font-family: var(--um-font-latin);
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--um-step-1);
+  letter-spacing: 0.02em;
+  color: var(--um-accent);
+}
+.um-subheading {
+  margin: 0 0 var(--um-space-2);
+  font-weight: 700;
+  font-size: var(--um-step-2);
+  letter-spacing: 0.05em;
+  line-height: 1.45;
+}
+.um-latin { font-family: var(--um-font-latin); font-style: italic; letter-spacing: 0.02em; }
+.um-num { font-family: var(--um-font-latin); font-variant-numeric: lining-nums tabular-nums; font-weight: 600; }
+
+/* ---------- 4. 真実の色 ---------- */
+.um-truth { font-weight: 700; letter-spacing: 0.04em; }
+.um-truth--red  { color: var(--um-truth-red);  text-shadow: 0 0 0.7em rgba(255, 42, 68, var(--um-truth-glow)); }
+.um-truth--blue { color: var(--um-truth-blue); text-shadow: 0 0 0.7em rgba(85, 184, 255, var(--um-truth-glow)); }
+.um-truth--gold { color: var(--um-truth-gold); text-shadow: 0 0 0.8em rgba(243, 220, 143, var(--um-truth-glow)); }
+/* 宣言の瞬間だけに使う一回きりの演出（利用者の操作に応えるとき限定） */
+.um-truth.is-declared { animation: um-declare 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes um-declare {
+  0%   { opacity: 0; letter-spacing: 0.5em; filter: blur(6px); }
+  60%  { opacity: 1; filter: blur(0); }
+  100% { letter-spacing: 0.04em; }
+}
+
+/* ---------- 5. 額縁パネル ---------- */
+.um-frame {
+  position: relative;
+  padding: var(--um-space-4);
+  background: var(--um-surface);
+  border: 1px solid var(--um-line);
+  outline: 1px solid var(--um-line-faint);
+  outline-offset: 5px;
+}
+.um-frame::before {               /* 四隅の菱形 */
+  content: "";
+  position: absolute;
+  inset: -7px;
+  pointer-events: none;
+  background: var(--um-accent);
+  -webkit-mask: var(--um-diamond) 0 0 / 13px 13px no-repeat, var(--um-diamond) 100% 0 / 13px 13px no-repeat,
+                var(--um-diamond) 0 100% / 13px 13px no-repeat, var(--um-diamond) 100% 100% / 13px 13px no-repeat;
+          mask: var(--um-diamond) 0 0 / 13px 13px no-repeat, var(--um-diamond) 100% 0 / 13px 13px no-repeat,
+                var(--um-diamond) 0 100% / 13px 13px no-repeat, var(--um-diamond) 100% 100% / 13px 13px no-repeat;
+}
+.um-frame--deep { background: var(--um-surface-deep); }
+.um-frame > :last-child { margin-bottom: 0; }
+
+/* ---------- 6. 罫と区切り ---------- */
+.um-rule {                        /* 中央に菱形を置いた罫 */
+  display: flex; align-items: center; gap: 0.9rem;
+  margin-block: var(--um-space-4);
+  color: var(--um-accent);
+  border: 0;
+}
+.um-rule::before, .um-rule::after { content: ""; flex: 1; height: 1px; background: var(--um-line); }
+.um-rule > span { width: 9px; height: 9px; background: currentColor; transform: rotate(45deg); }
+
+.um-chess {                       /* 盤の縁。章の切れ目に一本だけ */
+  height: 12px; border: 0; margin: 0;
+  background: repeating-conic-gradient(var(--um-accent) 0% 25%, transparent 0% 50%) 0 0 / 12px 12px;
+  opacity: 0.55;
+  -webkit-mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+          mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+}
+
+/* ---------- 7. ボタン ---------- */
+.um-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5em;
+  min-height: 44px; padding: 0.55em 1.5em;
+  font: inherit; font-weight: 500; letter-spacing: 0.08em; line-height: 1.4;
+  color: var(--um-accent-strong);
+  background: transparent;
+  border: 1px solid var(--um-accent);
+  border-radius: 0;
+  cursor: pointer;
+  text-decoration: none;
+  text-shadow: none;
+  transition: background-color 0.18s, color 0.18s;
+}
+.um-btn:hover, .um-btn[aria-pressed="true"] { background: var(--um-accent); color: var(--um-on-accent); }
+.um-btn:active { transform: translateY(1px); }
+.um-btn--primary { background: var(--um-wine); color: var(--um-gold-bright); border-color: var(--um-gold); }
+.um-btn--primary:hover { background: #74203a; color: #fff6d8; }
+.um-btn--small { min-height: 36px; padding: 0.3em 1em; font-size: var(--um-step--1); }
+.um-btn-row { display: flex; flex-wrap: wrap; gap: var(--um-space-2); }
+
+/* ---------- 8. カウンター（判別ツール向け） ---------- */
+.um-counter {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.25rem 1rem;
+  padding: var(--um-space-2) 0;
+  border-bottom: 1px solid var(--um-line-faint);
+}
+.um-counter__label { font-weight: 500; letter-spacing: 0.04em; }
+.um-counter__note { grid-column: 1; font-size: var(--um-step--1); color: var(--um-muted); line-height: 1.5; }
+.um-counter__controls { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 0.6rem; }
+.um-counter__value { min-width: 3.2ch; text-align: right; font-size: var(--um-step-3); line-height: 1; color: var(--um-accent-strong); }
+.um-counter__btn {
+  width: 44px; height: 44px; padding: 0;
+  font-family: var(--um-font-latin); font-size: 1.6rem; line-height: 1;
+  color: var(--um-accent-strong); background: transparent;
+  border: 1px solid var(--um-line); border-radius: 50%;
+  cursor: pointer; transition: background-color 0.15s, color 0.15s;
+}
+.um-counter__btn:hover { background: var(--um-accent); color: var(--um-on-accent); }
+.um-counter__btn:active { transform: scale(0.94); }
+
+/* ---------- 9. 推測バー ---------- */
+.um-bars { display: grid; gap: 0.55rem; margin: 0; padding: 0; list-style: none; }
+.um-bars__row { display: grid; grid-template-columns: 4.2em 1fr 3.6em; align-items: center; gap: 0.8rem; }
+.um-bars__track { height: 10px; background: var(--um-line-faint); overflow: hidden; }
+.um-bars__fill {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--um-gold-deep), var(--um-gold) 60%, var(--um-gold-bright));
+  transition: width 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.um-bars__row.is-top .um-bars__label { color: var(--um-accent-strong); font-weight: 700; }
+.um-bars__row.is-confirmed .um-bars__fill { background: var(--um-truth-red); }
+.um-bars__pct { text-align: right; font-size: 1.1rem; }
+
+/* ---------- 10. 表 ---------- */
+.um-table-scroll { overflow-x: auto; }
+.um-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; line-height: 1.6; }
+.um-table caption { caption-side: bottom; padding-top: 0.8em; text-align: left; font-size: var(--um-step--1); color: var(--um-muted); }
+.um-table th, .um-table td { padding: 0.7em 0.9em; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--um-line-faint); }
+.um-table th:first-child, .um-table td:first-child { text-align: left; }
+.um-table thead th { font-weight: 500; color: var(--um-accent); border-bottom: 1px solid var(--um-line); letter-spacing: 0.06em; }
+.um-table .um-num { font-size: 1.12rem; }
+.um-table tbody tr:hover td { background: var(--um-line-faint); }
+
+/* ---------- 11. 手紙（告知・引用・注意書き） ---------- */
+/* テーマに関わらず常に羊皮紙。夜の画面に一通だけ置くと効く。 */
+.um-letter {
+  position: relative;
+  max-width: 34rem;
+  padding: 2.6rem 2.4rem 3.4rem;
+  color: var(--um-ink);
+  background:
+    radial-gradient(ellipse at 20% 10%, rgba(255, 250, 230, 0.55), transparent 55%),
+    radial-gradient(ellipse at 90% 95%, rgba(122, 84, 30, 0.28), transparent 50%),
+    #e4d5b0;
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.7), inset 0 0 50px rgba(122, 84, 30, 0.22);
+  transform: rotate(-0.6deg);
+}
+.um-letter p { margin: 0 0 1em; }
+.um-letter__sign { margin-top: 1.6em; text-align: right; font-family: var(--um-font-latin); font-style: italic; font-size: var(--um-step-1); }
+.um-letter__seal {
+  position: absolute; right: 1.8rem; bottom: -1.4rem;
+  width: 4.2rem; height: 4.2rem; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #e9b9a6;
+  background: radial-gradient(circle at 35% 30%, #a3324d, #5a1428 58%, #3b0c1a);
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.45), inset 0 0 0 5px rgba(0, 0, 0, 0.14), inset 0 2px 3px rgba(255, 255, 255, 0.25);
+}
+.um-letter__seal svg { width: 2.2rem; height: auto; }
+
+/* ---------- 12. カケラ（結晶片のタイル。ナビや一覧の入口に） ---------- */
+.um-kakera-field {
+  display: grid; gap: var(--um-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
+}
+.um-kakera {
+  --um-kakera-shape: polygon(9% 0, 100% 6%, 93% 88%, 58% 100%, 0 82%);
+  display: block; padding: 1px;
+  color: #f4ecff; text-decoration: none;
+  background: linear-gradient(140deg, var(--um-gold-bright), rgba(200, 160, 74, 0.25) 45%, var(--um-witch));
+  clip-path: var(--um-kakera-shape);
+  transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.25s;
+}
+.um-kakera:nth-child(3n + 2) { --um-kakera-shape: polygon(0 8%, 84% 0, 100% 70%, 70% 100%, 6% 94%); }
+.um-kakera:nth-child(3n)     { --um-kakera-shape: polygon(14% 4%, 96% 0, 100% 92%, 30% 100%, 0 46%); }
+.um-kakera__inner {
+  display: block; min-height: 11rem; padding: 2.2rem 2rem 2.4rem;
+  clip-path: var(--um-kakera-shape);
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.16) 0 22%, transparent 22.3% 61%, rgba(255, 255, 255, 0.07) 61.3%),
+    linear-gradient(160deg, #4a2c82, #171033 72%);
+}
+.um-kakera__title { display: block; font-weight: 700; font-size: var(--um-step-1); letter-spacing: 0.05em; line-height: 1.5; }
+.um-kakera__text { display: block; margin-top: 0.5em; font-size: var(--um-step--1); line-height: 1.7; color: #cbbfe6; }
+.um-kakera:hover, .um-kakera:focus-visible { transform: translateY(-4px) rotate(-0.8deg); filter: brightness(1.2); }
+.um-kakera:focus-visible { outline: none; background: var(--um-gold-bright); }   /* clip-path は outline を切るので縁を光らせる */
+
+/* ---------- 13. ヒーロー（夜の海と島、黄金の蝶） ---------- */
+.um-hero {
+  position: relative; isolation: isolate; overflow: hidden;
+  min-height: min(100svh, 56rem);
+  display: grid; align-items: end;
+  background:
+    radial-gradient(ellipse 60% 30% at 50% 74%, var(--um-horizon-glow), transparent 70%),
+    linear-gradient(180deg, var(--um-sky-top) 0%, var(--um-sky-low) 74%, var(--um-sea) 74.2%, var(--um-sea) 100%);
+}
+.um-hero__island { position: absolute; left: 0; right: 0; bottom: 26%; width: 100%; height: auto; z-index: -2; fill: var(--um-island); transform: translateY(1px); }
+.um-hero__canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.um-hero__body {
+  display: grid; grid-template-columns: 1fr auto; align-items: end; gap: var(--um-space-4);
+  padding-block: var(--um-space-5);
+}
+.um-hero__title {                 /* 縦組みの題。ここがページの主役 */
+  margin: 0;
+  writing-mode: vertical-rl;
+  font-weight: 800;
+  font-size: clamp(2rem, min(6.4vw, 6.6vh), 4.4rem);
+  line-height: 1.5;
+  letter-spacing: 0.14em;
+  color: var(--um-accent-strong);
+  text-shadow: var(--um-title-halo);
+}
+.um-hero__lead { max-width: 30em; text-shadow: 0 0 10px var(--um-bg), 0 0 22px var(--um-bg); }   /* 蝶が後ろを通っても読める */
+.um-hero__latin { margin: 0 0 0.6em; font-size: var(--um-step-2); line-height: 1.3; color: var(--um-accent); }
+
+@media (max-width: 40rem) {
+  .um-section { padding-block: var(--um-space-5); }
+  .um-heading { font-size: var(--um-step-3); }
+  .um-frame { padding: var(--um-space-3); }
+  .um-hero__body { grid-template-columns: 1fr; }
+  .um-hero__title { justify-self: end; order: -1; }
+  .um-letter { padding: 2rem 1.5rem 3rem; }
+}
+
+/* ---------- 14. 動きを控える設定への配慮 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .um-page *, .um-page *::before, .um-page *::after { animation: none !important; transition: none !important; }
+}
+`;
+
+/* このツール固有のレイアウト（接頭辞 u2-）。文字と余白のトークンを小さめに上書きする */
+const TOOL_CSS = `
+.u2-root {
+  --um-step--1: 0.74rem; --um-step-0: 0.9rem; --um-step-1: 1.02rem; --um-step-2: 1.16rem; --um-step-3: 1.36rem;
+  --um-space-1: 0.35rem; --um-space-2: 0.6rem; --um-space-3: 0.9rem; --um-space-4: 1.25rem; --um-space-5: 1.8rem;
+  --u2-dock-h: 7.6rem;
+  min-height: 100vh; min-height: 100svh; line-height: 1.6; color-scheme: dark;
+}
+:root[data-theme="light"] .u2-root { color-scheme: light; }
+.u2-root button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.u2-root button:disabled { opacity: 0.35; cursor: default; }
+.u2-wrap { width: min(100% - 1.5rem, 40rem); margin-inline: auto; padding: 0.9rem 0 calc(var(--u2-dock-h) + env(safe-area-inset-bottom, 0px) + 1.2rem); }
+
+/* 題 */
+.u2-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.8rem; }
+.u2-title { margin: 0; font-size: 1.12rem; font-weight: 700; line-height: 1.4; letter-spacing: 0.06em; }
+.u2-sub { margin: 0; font-size: 0.8rem; color: var(--um-accent); }
+.u2-chess.um-chess { height: 8px; margin: 0.45rem 0 0; background-size: 8px 8px; }
+
+/* タブ（上に貼りつく） */
+.u2-tabs { position: sticky; top: 0; z-index: 15; margin: 0 -0.75rem; padding: 0 0.75rem; background: var(--um-bg); border-bottom: 1px solid var(--um-line); }
+.u2-tabs__in { display: flex; overflow-x: auto; scrollbar-width: none; }
+.u2-tabs__in::-webkit-scrollbar { display: none; }
+.u2-tab { flex: none; min-height: 44px; margin-bottom: -1px; padding: 0 0.45rem; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--um-muted); font: inherit; font-size: 0.82rem; letter-spacing: 0.05em; white-space: nowrap; cursor: pointer; }
+.u2-tab[aria-selected="true"] { color: var(--um-accent-strong); border-bottom-color: var(--um-accent); font-weight: 700; }
+
+/* 操作面 */
+.u2-panel.um-frame { margin-top: 0.9rem; padding: 0.7rem 0.85rem 0.9rem; }
+
+/* マス（押すと＋1、右端で−1、長押しで直接入力） */
+.u2-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0.4rem 0; }
+.u2-tiles--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (min-width: 34rem) { .u2-tiles:not(.u2-tiles--2) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.u2-tile { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 32px; min-height: 54px; background: rgba(255, 255, 255, 0.015); border: 1px solid var(--um-line-faint); }
+.u2-tile.has-value { border-color: var(--um-line); }
+.u2-tile__main { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr; column-gap: 0.3rem; align-items: end; padding: 0.32rem 0.4rem 0.3rem 0.5rem; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.u2-tile__main:active { background: rgba(200, 160, 74, 0.12); }
+.u2-tile__label { grid-column: 1 / -1; align-self: start; font-size: 0.8rem; font-weight: 500; line-height: 1.3; letter-spacing: 0.02em; overflow-wrap: anywhere; }
+.u2-tile__note { grid-column: 1; grid-row: 2; margin-top: 0.1rem; font-size: 0.63rem; line-height: 1.3; color: var(--um-muted); }
+.u2-tile__value { grid-column: 2; grid-row: 2; font-size: 1.4rem; line-height: 1; color: var(--um-muted); }
+.u2-tile.has-value .u2-tile__value { color: var(--um-accent-strong); }
+.u2-tile__minus { display: grid; place-items: center; padding: 0; background: transparent; border: 0; border-left: 1px solid var(--um-line-faint); color: var(--um-muted); cursor: pointer; }
+.u2-tile__minus:active { background: rgba(200, 160, 74, 0.12); color: var(--um-accent-strong); }
+.u2-tile__minus .u2-glyph { width: 12px; height: 12px; }
+.u2-hit { position: absolute; inset: -1px; pointer-events: none; border: 1px solid var(--um-accent-strong); background: rgba(243, 220, 143, 0.16); animation: u2-hit 0.5s ease-out forwards; }
+@keyframes u2-hit { from { opacity: 1; } to { opacity: 0; } }
+.u2-glyph { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+
+/* 見出し類 */
+.u2-ghead { display: flex; align-items: baseline; gap: 0.5rem; margin: 0.85rem 0 0; font: inherit; font-size: 0.84rem; }
+.u2-ghead:first-child { margin-top: 0.1rem; }
+.u2-ghead__name { font-weight: 700; letter-spacing: 0.04em; color: var(--um-accent); }
+.u2-ghead__line { flex: 1; align-self: center; height: 1px; background: var(--um-line-faint); }
+.u2-ghead__n { font-size: 0.78rem; }
+.u2-ghead__n .um-num { font-size: 1rem; margin-right: 0.1em; color: var(--um-accent-strong); }
+.u2-ghead__p { font-size: 0.74rem; color: var(--um-muted); }
+.u2-ghead--minor .u2-ghead__name { font-weight: 500; color: var(--um-text); }
+.u2-divider { display: flex; align-items: center; gap: 0.6rem; margin: 0.95rem 0 0.1rem; font-size: 0.76rem; font-weight: 500; letter-spacing: 0.08em; line-height: 1.5; color: var(--um-accent); }
+.u2-divider::before { content: ""; flex: none; width: 5px; height: 5px; background: currentColor; transform: rotate(45deg); }
+.u2-divider::after { content: ""; flex: 1; height: 1px; background: var(--um-line-faint); }
+.u2-divider--minor { margin-top: 0.6rem; color: var(--um-muted); }
+.u2-divider--minor::before { width: 4px; height: 4px; }
+.u2-panel > .u2-divider:first-child { margin-top: 0.1rem; }
+.u2-note { margin: 0.3rem 0; font-size: 0.72rem; line-height: 1.65; color: var(--um-muted); }
+
+/* 観測値 */
+.u2-obsgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1rem; margin: 0.2rem 0 0.1rem; }
+.u2-obsgrid--one { grid-template-columns: 1fr; }
+.u2-obs { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; margin: 0; padding: 0.15rem 0; font-size: 0.72rem; line-height: 1.5; color: var(--um-muted); }
+.u2-obs__val { text-align: right; white-space: nowrap; color: var(--um-accent-strong); }
+.u2-obs__val.is-empty { color: var(--um-muted); }
+.u2-obs .um-num { font-size: 0.88rem; }
+
+/* 数値の入力欄 */
+.u2-field { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 0.8rem; padding: 0.2rem 0 0.35rem; border-bottom: 1px solid var(--um-line-faint); cursor: text; }
+.u2-field__label { font-size: 0.84rem; font-weight: 500; letter-spacing: 0.04em; }
+.u2-field__hint { grid-column: 1; font-size: 0.68rem; line-height: 1.4; color: var(--um-muted); }
+.u2-field__input { grid-column: 2; grid-row: 1 / span 2; width: 5.6ch; height: 40px; padding: 0 0.15rem; background: transparent; border: 0; border-bottom: 1px solid var(--um-line); border-radius: 0; color: var(--um-accent-strong); font-size: 1.35rem; text-align: right; }
+.u2-field__input::placeholder { color: var(--um-muted); opacity: 0.45; }
+.u2-inline-action { display: flex; justify-content: flex-end; padding-top: 0.5rem; }
+.u2-inline-action .um-btn--small { min-height: 40px; }
+
+/* チェック */
+.u2-check { display: grid; grid-template-columns: 18px 1fr; column-gap: 0.7rem; align-items: start; width: 100%; min-height: 44px; padding: 0.45rem 0; background: transparent; border: 0; border-bottom: 1px solid var(--um-line-faint); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.u2-check__box { grid-row: 1 / span 2; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 0.2em; border: 1px solid var(--um-accent); }
+.u2-check[aria-checked="true"] .u2-check__box { background: var(--um-accent); }
+.u2-check[aria-checked="true"] .u2-check__box::after { content: ""; width: 9px; height: 4px; border-left: 2px solid var(--um-on-accent); border-bottom: 2px solid var(--um-on-accent); transform: translateY(-1px) rotate(-45deg); }
+.u2-check__label { grid-column: 2; font-size: 0.84rem; font-weight: 500; letter-spacing: 0.04em; line-height: 1.5; }
+.u2-check__note { grid-column: 2; font-size: 0.68rem; line-height: 1.5; color: var(--um-muted); }
+
+/* 選択と操作 */
+.u2-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.4rem; }
+.u2-choice.um-btn { flex-direction: column; align-items: flex-start; gap: 0; padding: 0.45em 0.8em; text-align: left; letter-spacing: 0.04em; }
+.u2-choice__sub { font-size: 0.68rem; opacity: 0.85; }
+.u2-actions { margin-top: 0.5rem; gap: 0.5rem; }
+.u2-actions .um-btn { flex: 1 1 9rem; }
+.u2-armed.um-btn, .u2-armed.um-btn:hover { background: transparent; color: var(--um-truth-red); border-color: var(--um-truth-red); }
+.u2-summary { display: block; width: 100%; margin-top: 0.6rem; padding: 0.6rem 0.8rem; background: var(--um-bg); color: var(--um-text); border: 1px solid var(--um-line); border-radius: 0; font: inherit; font-size: 0.74rem; line-height: 1.7; }
+
+/* 足元 */
+
+/* データベース（表は枠の中で横スクロール。項目名の列は左に固定） */
+.u2-db-scroll { margin: 0.35rem 0 0.2rem; }
+.u2-db { font-size: 0.72rem; line-height: 1.45; }
+.u2-db th, .u2-db td { padding: 0.4em 0.55em; }
+.u2-db thead th { font-size: 0.68rem; letter-spacing: 0.02em; }
+.u2-db th[scope="row"], .u2-db thead th:first-child { position: sticky; left: 0; z-index: 1; background: var(--um-surface); text-align: left; font-weight: 500; }
+.u2-db td.um-num { font-size: 0.84rem; }
+.u2-db tbody tr:hover td { background: transparent; }
+.u2-dbl th[scope="row"] { position: static; white-space: nowrap; vertical-align: top; }
+.u2-dbl td { white-space: normal; text-align: left; line-height: 1.6; }
+.u2-dbl thead th { text-align: left; }
+.u2-db th .um-num, .u2-dbl td .um-num { font-size: 1em; }
+.u2-db-src { margin: 0 0 0.2rem; font-size: 0.74rem; line-height: 1.7; }
+
+/* 盤面バー（下に貼りつく）：推定・直前の操作・戻す／進む・履歴 */
+.u2-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--um-surface-deep); border-top: 1px solid var(--um-line); box-shadow: 0 -12px 24px -14px rgba(0, 0, 0, 0.8); }
+.u2-dock::before { content: ""; position: absolute; left: 0; right: 0; top: 3px; height: 1px; background: var(--um-line-faint); pointer-events: none; }
+.u2-dock__in { width: min(100% - 1.5rem, 40rem); margin-inline: auto; padding: 0.5rem 0 0.45rem; }
+.u2-dock__sum { display: block; width: 100%; padding: 0; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.u2-dock__row { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; min-height: 1.45rem; }
+.u2-dock__verdict { min-width: 0; overflow: hidden; font-size: 0.88rem; line-height: 1.45; white-space: nowrap; text-overflow: ellipsis; }
+.u2-dock__verdict .um-truth + .um-truth { margin-left: 0.5em; }
+.u2-dock__pay { flex: none; font-size: 0.66rem; color: var(--um-muted); }
+.u2-dock__pay .um-num { margin-left: 0.25em; font-size: 0.9rem; color: var(--um-accent-strong); }
+.u2-mini { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; margin-top: 0.25rem; }
+.u2-mini__cell { display: grid; gap: 3px; }
+.u2-mini__top { display: flex; align-items: baseline; justify-content: space-between; gap: 2px; line-height: 1.1; }
+.u2-mini__idx { font-family: var(--um-font-latin); font-style: italic; font-size: 0.72rem; color: var(--um-muted); }
+.u2-mini__pct { font-size: 0.8rem; color: var(--um-text); }
+.u2-mini__track { height: 3px; overflow: hidden; background: var(--um-line-faint); }
+.u2-mini__fill { display: block; height: 100%; background: linear-gradient(90deg, var(--um-gold-deep), var(--um-gold) 60%, var(--um-gold-bright)); transition: width 0.3s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.u2-mini__cell.is-top .u2-mini__idx, .u2-mini__cell.is-top .u2-mini__pct { color: var(--um-accent-strong); font-weight: 700; }
+.u2-mini__cell.is-confirmed .u2-mini__fill { background: var(--um-truth-red); }
+.u2-mini__cell.is-out { opacity: 0.35; }
+.u2-dock__ops { display: grid; grid-template-columns: 46px minmax(0, 1fr) 46px; gap: 6px; margin-top: 0.4rem; }
+.u2-iconbtn { display: grid; place-items: center; width: 100%; height: 40px; padding: 0; background: transparent; border: 1px solid var(--um-line); color: var(--um-accent-strong); cursor: pointer; }
+.u2-iconbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.u2-iconbtn:active:not(:disabled) { background: var(--um-accent); color: var(--um-on-accent); }
+.u2-last { display: flex; align-items: center; gap: 0.5rem; min-width: 0; height: 40px; padding: 0 0.6rem; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--um-line-faint); color: var(--um-text); font: inherit; font-size: 0.76rem; text-align: left; cursor: pointer; }
+.u2-last__text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.u2-last__text.is-notice { color: var(--um-accent-strong); }
+.u2-last__text.is-muted { color: var(--um-muted); }
+.u2-last__more { flex: none; font-size: 0.66rem; letter-spacing: 0.06em; color: var(--um-accent); }
+
+/* 下から出る面（履歴・推定の詳細・直接入力） */
+.u2-sheet { position: fixed; inset: 0; z-index: 40; display: flex; align-items: flex-end; justify-content: center; background: rgba(5, 4, 12, 0.62); animation: u2-fade 0.18s ease-out; }
+.u2-sheet__panel { display: flex; flex-direction: column; width: min(100%, 40rem); max-height: min(80vh, 42rem); padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--um-surface); border-top: 1px solid var(--um-line); outline: none; animation: u2-rise 0.22s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.u2-sheet__head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.35rem 0.6rem 0.35rem 1rem; border-bottom: 1px solid var(--um-line-faint); }
+.u2-sheet__title { margin: 0; font-size: 0.98rem; font-weight: 700; letter-spacing: 0.06em; }
+.u2-sheet__head .u2-iconbtn { width: 44px; border-color: transparent; }
+.u2-sheet__body { overflow-y: auto; overscroll-behavior: contain; padding: 0.7rem 1rem 1.1rem; }
+@keyframes u2-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes u2-fade { from { opacity: 0; } }
+
+.u2-hist__ops { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.u2-hist__ops .um-btn { min-height: 40px; font-size: 0.8rem; }
+.u2-hist { margin: 0.5rem 0 0; padding: 0; list-style: none; }
+.u2-hist__item { display: grid; grid-template-columns: 4.3em minmax(0, 1fr) auto; align-items: center; gap: 0.55rem; padding: 0.35rem 0; border-bottom: 1px solid var(--um-line-faint); font-size: 0.8rem; }
+.u2-hist__time { font-size: 0.78rem; color: var(--um-muted); }
+.u2-hist__label { line-height: 1.45; overflow-wrap: anywhere; }
+.u2-hist__item.is-latest .u2-hist__label { color: var(--um-accent-strong); }
+.u2-hist__item.is-undone .u2-hist__label { color: var(--um-muted); text-decoration: line-through; text-decoration-color: var(--um-line); }
+.u2-hist__jump { min-height: 36px; padding: 0 0.2rem; background: transparent; border: 0; color: var(--um-accent); font: inherit; font-size: 0.7rem; letter-spacing: 0.04em; white-space: nowrap; text-decoration: underline; text-decoration-color: var(--um-line); text-underline-offset: 0.25em; cursor: pointer; }
+.u2-hist__now { display: flex; align-items: center; gap: 0.6rem; margin: 0.35rem 0 0.1rem; font-size: 0.7rem; letter-spacing: 0.12em; color: var(--um-accent); }
+.u2-hist__now::before, .u2-hist__now::after { content: ""; flex: 1; height: 1px; background: var(--um-line); }
+.u2-hist__empty { margin: 0.8rem 0; font-size: 0.8rem; color: var(--um-muted); }
+.u2-hist__foot { display: flex; justify-content: flex-end; margin-top: 0.8rem; }
+
+.u2-detail__prior { margin: 0 0 0.6rem; font-size: 0.72rem; color: var(--um-muted); }
+.u2-detail .um-bars { gap: 0.3rem; }
+.u2-detail .um-bars__row { line-height: 1.5; }
+.u2-detail .um-bars__pct { font-size: 0.95rem; }
+.u2-verdict { margin: 0.8rem 0 0; font-size: 0.98rem; line-height: 1.7; }
+.u2-verdict > span { display: block; }
+.u2-idle { color: var(--um-muted); }
+.u2-payout { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.25rem 1rem; margin: 0.7rem 0 0; padding-top: 0.6rem; border-top: 1px solid var(--um-line-faint); font-size: 0.74rem; color: var(--um-muted); }
+.u2-payout__val { font-size: 1.05rem; color: var(--um-accent-strong); }
+.u2-payout__max { margin-left: 0.7em; }
+
+.u2-edit__input { display: block; width: 100%; height: 56px; margin: 0.2rem 0 0.8rem; padding: 0; background: transparent; border: 0; border-bottom: 1px solid var(--um-line); border-radius: 0; color: var(--um-accent-strong); font-size: 2rem; text-align: right; }
+.u2-edit__was { margin: 0; font-size: 0.72rem; color: var(--um-muted); }
+
+/* タッチ端末では、押した後に金の塗りが残らないようにする */
+@media (hover: none) {
+  .um-page .um-btn:not(.um-btn--primary):not([aria-pressed="true"]):hover { background: transparent; color: var(--um-accent-strong); }
+  .um-page .um-btn--primary:hover { background: var(--um-wine); color: var(--um-gold-bright); }
+}
+`;
+
+/* ============================ 記録と履歴 ============================ */
+
+const HIST_KEY = STORE_KEY + ":history";
+const HIST_MAX = 200;
+
+/* ボーナス種別。回数は「特定の契機＋その他の契機＋契機不明」の合計として持つ */
+const GROUPS = [
+  { key: "same", name: "同色BIG（黄金郷）", short: "同色BIG", nKey: "bigD", chk: "chkSame", o: "oSame", u: "uSame" },
+  { key: "ish", name: "異色BIG（WITCH）", short: "異色BIG", nKey: "bigI", chk: "chkIsh", o: "oIsh", u: "uIsh" },
+  { key: "reg", name: "REG", short: "REG", nKey: "reg", chk: "chkReg", o: "oReg", u: "uReg" },
+];
+const CHIP = {
+  spCC: "1枚役C＋赤7", spBW: "1枚役B＋白7",
+  spKA: "確定役A＋赤赤白", spBRW: "1枚役B＋赤赤白", spCRW: "1枚役C＋赤赤白", spBWR: "1枚役B＋白白赤", spCWR: "1枚役C＋白白赤",
+  spBellR: "共通ベル＋赤赤青", spCR: "1枚役C＋赤赤青", spRepR: "リプレイ＋赤赤青", spRepW: "リプレイ＋白白青",
+};
+const groupTotal = (st, g) => spSum(st, g.key) + (st[g.o] || 0) + (st[g.u] || 0);
+
+/* 推定計算用に、以前の形（種別ごとの総回数と契機を確認した回数）へ組み直す */
+function legacy(st) {
+  const out = { ...st, allChecked: false };
+  for (const g of GROUPS) {
+    const spn = spSum(st, g.key);
+    out[g.nKey] = spn + (st[g.o] || 0) + (st[g.u] || 0);
+    out[g.chk] = String(spn + (st[g.o] || 0));
+  }
+  return out;
+}
+
+/* 以前の保存データ（総回数＋特定の内訳＋契機確認）を、契機つきの記録へ移す */
+function migrate(saved) {
+  const s = { ...saved };
+  if (s.oSame === undefined && (s.bigD !== undefined || s.bigI !== undefined || s.reg !== undefined)) {
+    for (const g of GROUPS) {
+      const n = num(s[g.nKey]);
+      const spn = spSum(s, g.key);
+      const checked = s.allChecked === false ? Math.min(n, Math.max(num(s[g.chk]), spn)) : n;
+      s[g.o] = Math.max(0, checked - spn);
+      s[g.u] = Math.max(0, n - Math.max(checked, spn));
+    }
+  }
+  /* 通常時の小役（確定役A・1枚役B/C）は数えない仕様にしたので、残っていても使わない */
+  for (const k of ["bigD", "bigI", "reg", "allChecked", "chkSame", "chkIsh", "chkReg", "normalG", "maiB", "maiC", "kakuA"]) delete s[k];
+  return s;
+}
+
+const CONF_ROWS = [
+  { k: "s2", label: "設定2以上濃厚", src: "RB中キャラ紹介が全て銀／1枚絵 朱志香・シエスタ姉妹／超パー「88%」" },
+  { k: "s3", label: "設定3以上濃厚", src: "超パー「33%」／転落ボイス ウィル・ベルンカステル" },
+  { k: "s4", label: "設定4以上濃厚", src: "CHECKMATE（金）／1枚絵 縁寿＆7姉妹／超パー「44%」／ボイス ベアト(雛)" },
+  { k: "s5", label: "設定5以上濃厚", src: "超パー「55%」／転落ボイス ベアトリーチェ" },
+  { k: "s6", label: "設定6濃厚", src: "CHECKMATE（虹）／RB全て金背景／1枚絵 ミニキャラ／超パー「66%」" },
+];
+
+const KEY_LABEL = {
+  totalG: "総ゲーム数", rbG: "RB総ゲーム数", normalG: "通常時ゲーム数",
+  maiB: "1枚役B", maiC: "1枚役C", kakuA: "確定役A",
+  artLv1: "ART Lv.1", artLv2: "ART Lv.2", artLv3: "ART Lv.3",
+  bell: "共通ベル", artMiss: "ART中ハズレ",
+  naname: "青7斜め揃い", heiko: "青7平行揃い",
+  rbBgNormal: "RB背景・通常", rbBgSilver: "RB背景・銀", rbBgGold: "RB背景・金",
+  bbMiss0: "BB中ハズレ 0pt", bbMiss3: "BB中ハズレ 3pt",
+  cycle30: "初期真実 30pt", cycle50: "初期真実 50pt", cycle70: "初期真実 70pt", cycle200: "初期真実 200pt",
+  logoS: "ロゴ発光・小", logoL: "ロゴ発光・大",
+  lv2dN: "同色BB後 ART突入", lv2dK: "同色BB後 Lv.2ナビ",
+  lv2iN: "異色BB後 ART突入", lv2iK: "異色BB後 Lv.2ナビ",
+  lv2oN: "REG後・その他 ART突入", lv2oK: "REG後・その他 Lv.2ナビ",
+  memoOdd: "奇数設定 期待度UP", memoEven: "偶数設定 期待度UP", memo2: "設定2以上 期待度UP",
+  prior: "事前分布", vibrate: "タップ時の振動",
+};
+for (const g of GROUPS) {
+  KEY_LABEL[g.o] = `${g.short}・その他の契機`;
+  KEY_LABEL[g.u] = `${g.short}・契機不明`;
+}
+for (const s of SP) KEY_LABEL[s.k] = `${GROUPS.find((g) => g.key === s.g).short}・${CHIP[s.k]}`;
+for (const grp of ART_PIC) for (const it of grp.items) KEY_LABEL[it.k] = `1枚絵・${it.label}`;
+
+const same = (a, b) => a === b || (typeof a === "object" && typeof b === "object" && JSON.stringify(a) === JSON.stringify(b));
+
+/* 前後の差分（変わったキーだけを [前, 後] で持つ） */
+function diff(a, b) {
+  const p = {};
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (!same(a[k], b[k])) p[k] = [a[k], b[k]];
+  }
+  return p;
+}
+function applyPatch(s, patch, side) {
+  const n = { ...s };
+  for (const k in patch) {
+    const v = patch[k][side];
+    if (v === undefined || v === null) delete n[k];
+    else n[k] = v;
+  }
+  return n;
+}
+
+/* 1枚絵の濃厚要素は、濃厚チェックへ自動で反映する（同じ操作の一部として記録）。
+   朱志香・シエスタ姉妹（設定1否定）→設定2以上、縁寿＆7姉妹→設定4以上、ミニキャラ→設定6 */
+function normalize(s) {
+  const s2 = s.conf.s2 || s.picJessica > 0 || s.picSiesta > 0;
+  const s4 = s.conf.s4 || s.artEnjoNanashimai > 0;
+  const s6 = s.conf.s6 || s.artMiniChara > 0;
+  if (s2 === s.conf.s2 && s4 === s.conf.s4 && s6 === s.conf.s6) return s;
+  return { ...s, conf: { ...s.conf, s2, s4, s6 } };
+}
+
+/* 差分から、履歴に出す一行を作る */
+function describe(patch) {
+  const keys = Object.keys(patch).filter((k) => k !== "conf");
+  const one = (k) => {
+    const [b, a] = patch[k];
+    const name = KEY_LABEL[k] || k;
+    if (k === "prior") return `${name} → ${a === "low" ? "低設定寄り" : "均等"}`;
+    if (typeof a === "boolean") return `${name} ${a ? "オン" : "オフ"}`;
+    if (typeof a === "number" && typeof b === "number") {
+      const d = a - b;
+      return Math.abs(d) === 1 ? `${name} ${d > 0 ? "＋1" : "−1"} → ${a}` : `${name} ${b} → ${a}`;
+    }
+    return `${name} → ${a === "" || a === undefined ? "未入力" : a}`;
+  };
+  if (keys.length === 1) return one(keys[0]) + (patch.conf ? "（濃厚に反映）" : "");
+  if (keys.length === 0 && patch.conf) {
+    const [b, a] = patch.conf;
+    return CONF_ROWS.filter((r) => !!b[r.k] !== !!a[r.k]).map((r) => `${r.label} ${a[r.k] ? "オン" : "オフ"}`).join("、");
+  }
+  return `${keys.length}項目を変更`;
+}
+
+function reducer(S, a) {
+  switch (a.type) {
+    case "load":
+      return { st: a.st, past: a.past || [], future: a.future || [] };
+    case "commit": {
+      const next = normalize(typeof a.fn === "function" ? a.fn(S.st) : a.fn);
+      const patch = diff(S.st, next);
+      if (!Object.keys(patch).length) return S;
+      const t = Date.now();
+      const last = S.past[S.past.length - 1];
+      /* 入力欄への連続した打ち込みは、1つの操作にまとめる */
+      if (a.coalesce && last && last.co === a.coalesce && !S.future.length && t - last.t < 3000) {
+        const merged = {};
+        for (const k of new Set([...Object.keys(last.patch), ...Object.keys(patch)])) {
+          const b = k in last.patch ? last.patch[k][0] : patch[k][0];
+          const af = k in patch ? patch[k][1] : last.patch[k][1];
+          if (!same(b, af)) merged[k] = [b, af];
+        }
+        const past = S.past.slice(0, -1);
+        if (Object.keys(merged).length) past.push({ ...last, t, patch: merged, label: a.label || describe(merged) });
+        return { st: next, past, future: [] };
+      }
+      const entry = {
+        id: `${t}-${Math.random().toString(36).slice(2, 7)}`,
+        t, co: a.coalesce || null, patch, label: a.label || describe(patch),
+      };
+      return { st: next, past: [...S.past, entry].slice(-HIST_MAX), future: [] };
+    }
+    case "undo": {
+      if (!S.past.length) return S;
+      const e = S.past[S.past.length - 1];
+      return { st: applyPatch(S.st, e.patch, 0), past: S.past.slice(0, -1), future: [e, ...S.future].slice(0, HIST_MAX) };
+    }
+    case "redo": {
+      if (!S.future.length) return S;
+      const e = S.future[0];
+      return { st: applyPatch(S.st, e.patch, 1), past: [...S.past, e], future: S.future.slice(1) };
+    }
+    case "jump": {
+      let X = S;
+      while (X.past.length > a.n) X = reducer(X, { type: "undo" });
+      while (X.past.length < a.n && X.future.length) X = reducer(X, { type: "redo" });
+      return X;
+    }
+    case "clearHist":
+      return { ...S, past: [], future: [] };
+    default:
+      return S;
+  }
+}
+
+const firstKey = (e) => (e ? Object.keys(e.patch).find((k) => k !== "conf") || null : null);
+const hhmmss = (t) => {
+  const d = new Date(t);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((x) => String(x).padStart(2, "0")).join(":");
+};
+
+/* ============================ 部品 ============================ */
+
+/* 文中の数値だけを、等幅のライニング数字（um-num）にする */
+const NUM_RE = /(\d[\d,]*(?:\.\d+)?(?:\/\d[\d,]*(?:\.\d+)?)?%?)/g;
+function T({ children }) {
+  if (children === null || children === undefined || children === false) return null;
+  const text = String(children);
+  const parts = text.split(NUM_RE);
+  if (parts.length === 1) return text;
+  return parts.map((p, i) => (i % 2 === 1 ? <span key={i} className="um-num">{p}</span> : p));
+}
+
+const Glyph = ({ plus }) => (
+  <svg className="u2-glyph" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <path d="M3 8h10" />
+    {plus ? <path d="M8 3v10" /> : null}
+  </svg>
+);
+const Icon = ({ d }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={d} /></svg>
+);
+const ICON = {
+  undo: "M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
+  redo: "M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13",
+  close: "M6 6l12 12M18 6 6 18",
+};
+
+/* マス：押すと＋1、右端で−1、長押し（PCは右クリック）で直接入力 */
+function Tile({ k, label, note, value, red, hit, onInc, onDec, onEdit }) {
+  const timer = useRef(null);
+  const fired = useRef(false);
+  const down = useRef(false);
+  const who = KEY_LABEL[k] || label;
+  const cancel = () => { down.current = false; clearTimeout(timer.current); };
+  return (
+    <div className={"u2-tile" + (value > 0 ? " has-value" : "")}>
+      {hit && hit.k === k ? <span key={hit.n} className="u2-hit" aria-hidden="true" /> : null}
+      <button
+        type="button"
+        className="u2-tile__main"
+        aria-label={`${who}を1増やす（いま${value}）`}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          down.current = true;
+          fired.current = false;
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => { fired.current = true; onEdit(); }, 480);
+        }}
+        onPointerUp={cancel}
+        onPointerLeave={cancel}
+        onPointerCancel={cancel}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (down.current) {
+            if (!fired.current) { fired.current = true; clearTimeout(timer.current); onEdit(); }
+          } else {
+            onEdit();
+          }
+        }}
+        onClick={() => {
+          if (fired.current) { fired.current = false; return; }
+          onInc();
+        }}
+      >
+        <span className={"u2-tile__label" + (red ? " um-truth um-truth--red" : "")}><T>{label}</T></span>
+        {note ? <span className="u2-tile__note"><T>{note}</T></span> : null}
+        <span className="u2-tile__value um-num">{value}</span>
+      </button>
+      <button type="button" className="u2-tile__minus" aria-label={`${who}を1減らす`} onClick={onDec}><Glyph /></button>
+    </div>
+  );
+}
+
+function NumField({ label, hint, value, onChange }) {
+  return (
+    <label className="u2-field">
+      <span className="u2-field__label"><T>{label}</T></span>
+      {hint ? <span className="u2-field__hint"><T>{hint}</T></span> : null}
+      <input
+        className="u2-field__input um-num"
+        inputMode="numeric"
+        placeholder="0"
+        value={value}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ""))}
+      />
+    </label>
+  );
+}
+
+function Check({ checked, onChange, label, note, labelClass }) {
+  return (
+    <button type="button" role="checkbox" aria-checked={checked} className="u2-check" onClick={() => onChange(!checked)}>
+      <span className="u2-check__box" aria-hidden="true" />
+      <span className={"u2-check__label" + (labelClass ? " " + labelClass : "")}><T>{label}</T></span>
+      {note ? <span className="u2-check__note"><T>{note}</T></span> : null}
+    </button>
+  );
+}
+
+const Divider = ({ children, minor }) => (
+  <h3 className={"u2-divider" + (minor ? " u2-divider--minor" : "")}><span><T>{children}</T></span></h3>
+);
+
+const GroupHead = ({ name, count, right, minor }) => (
+  <h3 className={"u2-ghead" + (minor ? " u2-ghead--minor" : "")}>
+    <span className="u2-ghead__name"><T>{name}</T></span>
+    <span className="u2-ghead__line" aria-hidden="true" />
+    {count !== undefined ? <span className="u2-ghead__n"><span className="um-num">{count}</span>回</span> : null}
+    {right ? <span className="u2-ghead__p"><T>{right}</T></span> : null}
+  </h3>
+);
+
+const Observed = ({ label, value }) => (
+  <p className="u2-obs">
+    <span><T>{label}</T></span>
+    <span className={"u2-obs__val" + (value === "–" ? " is-empty" : "")}><T>{value}</T></span>
+  </p>
+);
+
+/* データベースの表（設定1〜6） */
+const DB_HEAD = ["設定1", "設定2", "設定3", "設定4", "設定5", "設定6"];
+const oneOver = (arr, d = 1) => arr.map((x) => `1/${fmt(x, d)}`);
+const pcts = (arr, d = 1) => arr.map((x) => `${fmt(x, d)}%`);
+function DbTable({ title, rows, note }) {
+  return (
+    <>
+      <GroupHead minor name={title} />
+      <div className="um-table-scroll u2-db-scroll">
+        <table className="um-table u2-db">
+          <thead>
+            <tr>
+              <th scope="col">項目</th>
+              {DB_HEAD.map((h) => <th key={h} scope="col"><T>{h}</T></th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r[0]}>
+                <th scope="row"><T>{r[0]}</T></th>
+                {r.slice(1).map((v, i) => <td key={i} className="um-num">{v}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {note ? <p className="u2-note"><T>{note}</T></p> : null}
+    </>
+  );
+}
+/* 項目と内容の表（列数は head に合わせる） */
+function DbList({ title, head, rows, note }) {
+  return (
+    <>
+      <GroupHead minor name={title} />
+      <div className="um-table-scroll u2-db-scroll">
+        <table className="um-table u2-db u2-dbl">
+          <thead><tr>{head.map((h) => <th key={h} scope="col">{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r[0]}>
+                <th scope="row"><T>{r[0]}</T></th>
+                {r.slice(1).map((v, i) => <td key={i}><T>{v}</T></td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {note ? <p className="u2-note"><T>{note}</T></p> : null}
+    </>
+  );
+}
+
+function Sheet({ title, onClose, children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    if (ref.current && !ref.current.contains(document.activeElement)) ref.current.focus();
+    return () => { document.body.style.overflow = prev; window.removeEventListener("keydown", onKey); };
+  }, []);
+  return (
+    <div className="u2-sheet" onClick={onClose}>
+      <div className="u2-sheet__panel" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
+        <div className="u2-sheet__head">
+          <h2 className="u2-sheet__title">{title}</h2>
+          <button type="button" className="u2-iconbtn" aria-label="閉じる" onClick={onClose}><Icon d={ICON.close} /></button>
+        </div>
+        <div className="u2-sheet__body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Editor({ k, value, onSave, onClose }) {
+  const [v, setV] = useState(String(value || 0));
+  const submit = () => { onSave(Math.max(0, parseInt(v.replace(/[^0-9]/g, "") || "0", 10))); onClose(); };
+  return (
+    <Sheet title={`${KEY_LABEL[k] || k} を直接入力`} onClose={onClose}>
+      <p className="u2-edit__was">いまの値 <span className="um-num">{value || 0}</span></p>
+      <input
+        className="u2-edit__input um-num"
+        inputMode="numeric"
+        autoFocus
+        aria-label="新しい値"
+        value={v}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => setV(e.target.value.replace(/[^0-9]/g, ""))}
+        onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+      />
+      <div className="um-btn-row u2-actions">
+        <button type="button" className="um-btn um-btn--primary" onClick={submit}>この値にする</button>
+        <button type="button" className="um-btn" onClick={onClose}>やめる</button>
+      </div>
+    </Sheet>
+  );
+}
+
+const TABS = [
+  { id: "bonus", label: "ボーナス" },
+  { id: "rb", label: "RB中" },
+  { id: "bb", label: "BB中" },
+  { id: "art", label: "ART" },
+  { id: "normal", label: "通常時" },
+  { id: "conf", label: "濃厚" },
+  { id: "db", label: "データベース" },
+  { id: "opt", label: "その他" },
+];
+
+/* 運命分岐モードから即転落（ART未突入かつ1回目の転落リプレイで転落）した時のボイス。
+   セリフの本文は作品の台詞なので収録していない。line に書き足すと、表にセリフの列が出る */
+const FALL_VOICES = [
+  { who: "右代宮 秀吉", hint: "デフォルト", line: "悪魔や!悪魔の仕業や!" },
+  { who: "南條 輝正", hint: "奇数設定期待度UP", line: "残念だが、手の施しようがない…" },
+  { who: "右代宮 金蔵", hint: "奇数設定期待度UP", line: "おぉおおおおぉぉ!!ベアトリーチェぇえええ!!" },
+  { who: "右代宮 夏妃", hint: "偶数設定期待度UP", line: "もう……私を…許してッ…!" },
+  { who: "右代宮 楼座", hint: "偶数設定期待度UP", line: "私はなんて、馬鹿なママだったの…!!" },
+  { who: "右代宮 縁寿", hint: "設定2以上期待度UP", line: "ここはあなたのいるべき世界じゃないわ" },
+  { who: "ドラノール", hint: "設定2以上期待度UP", line: "ここがアナタの墓場となり、残念デス" },
+  { who: "ウィル", hint: "設定3以上濃厚", line: "挫けるんじゃねぇ。足掻いて、足掻くんだよ…!!" },
+  { who: "ベルンカステル", hint: "設定3以上濃厚", line: "グッバイ、ハバナイスディ" },
+  { who: "ベアトリーチェ（雛）", hint: "設定4以上濃厚", line: "どうして私は……戦人さんを好きなの…?" },
+  { who: "ベアトリーチェ", hint: "設定5以上濃厚", line: "あっひゃははははっ!!" },
+];
+const CHO_PA = [
+  ["「22%」", "設定2以上期待度UP"],
+  ["「33%」", "設定3以上濃厚"],
+  ["「44%」", "設定4以上濃厚"],
+  ["「55%」", "設定5以上濃厚"],
+  ["「66%」", "設定6濃厚"],
+  ["「88%」", "設定2以上＋BB濃厚"],
+];
+const RB_BG = [
+  ["通常（茶系）", "高設定期待度・低"],
+  ["銀", "高設定期待度・中"],
+  ["金", "高設定期待度・高"],
+  ["全て銀", "設定2以上濃厚"],
+  ["全て金", "設定6濃厚"],
+];
+const STORY = [
+  ["Congratulation", "デフォルト"],
+  ["CHECKMATE（金）", "設定4以上濃厚"],
+  ["CHECKMATE（虹）", "設定6濃厚"],
+];
+
+const PRIOR_OPTS = [
+  { k: "flat", label: "均等", sub: "1〜6を等確率" },
+  { k: "low", label: "低設定寄り", sub: "40:20:15:12:8:5" },
+];
+
+const SOURCE_URL = "https://chonborista.com/slot/oizumi-slot/247637/";
+
+/* ============================ 本体 ============================ */
+
+function Umineko2Settei() {
+  const [S, dispatch] = useReducer(reducer, null, () => ({ st: emptyState(), past: [], future: [] }));
+  const st = S.st;
+  const [loaded, setLoaded] = useState(false);
+  const [tab, setTab] = useState("bonus");
+  const [sheet, setSheet] = useState(null); // "history" | "detail" | { edit: key }
+  const [notice, setNotice] = useState(null);
+  const [saveErr, setSaveErr] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [hit, setHit] = useState({ k: null, n: 0 });
+  const timer = useRef(null);
+  const noticeTimer = useRef(null);
+  const declRef = useRef({ min: null, n: 0, on: false });
+  const tabsRef = useRef(null);
+  const panelRef = useRef(null);
+
+  /* 書体の読み込み（読めない環境では明朝・セリフの代替書体で表示） */
+  useEffect(() => {
+    if (typeof document === "undefined" || document.getElementById("um-fonts")) return;
+    const pre = document.createElement("link");
+    pre.rel = "preconnect";
+    pre.href = "https://fonts.googleapis.com";
+    const link = document.createElement("link");
+    link.id = "um-fonts";
+    link.rel = "stylesheet";
+    link.href = FONT_HREF;
+    document.head.appendChild(pre);
+    document.head.appendChild(link);
+  }, []);
+
+  /* 読み込み（記録と履歴） */
+  useEffect(() => {
+    (async () => {
+      let s = emptyState();
+      let past = [];
+      let future = [];
+      try {
+        const raw = await store.load(STORE_KEY);
+        if (raw) s = { ...emptyState(), ...migrate(JSON.parse(raw)) };
+      } catch (e) { /* 初回は未保存 */ }
+      try {
+        const h = await store.load(HIST_KEY);
+        if (h) { const o = JSON.parse(h); past = o.past || []; future = o.future || []; }
+      } catch (e) { /* 履歴なし */ }
+      dispatch({ type: "load", st: s, past, future });
+      setLoaded(true);
+    })();
+  }, []);
+
+  /* 保存（変更のたび・500ms デバウンス） */
+  useEffect(() => {
+    if (!loaded) return;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      try {
+        await store.save(STORE_KEY, JSON.stringify(S.st));
+        await store.save(HIST_KEY, JSON.stringify({ past: S.past, future: S.future }));
+        setSaveErr(false);
+      } catch (e) {
+        setSaveErr(true);
+      }
+    }, 500);
+    return () => clearTimeout(timer.current);
+  }, [S, loaded]);
+
+  const L = useMemo(() => legacy(st), [st]);
+  const { post, min } = useMemo(() => computePosterior(L), [L]);
+
+  /* 赤の宣言演出は、操作で下限が上がった瞬間だけ（読み込み時は出さない）。
+     同じ描画の中で判定して、赤い文字が一瞬だけ演出なしで出るのを防ぐ */
+  if (loaded) {
+    const d = declRef.current;
+    if (d.min === null) d.min = min;
+    else if (d.min !== min) { d.on = min > d.min; d.n += 1; d.min = min; }
+  }
+  const declare = declRef.current;
+
+  /* ---- 操作 ---- */
+  const commit = (fn, opts = {}) => dispatch({ type: "commit", fn, ...opts });
+  const set = (k, v, opts) => commit((s) => ({ ...s, [k]: v }), opts);
+  const say = (text) => {
+    clearTimeout(noticeTimer.current);
+    setNotice(text);
+    noticeTimer.current = setTimeout(() => setNotice(null), 2200);
+  };
+  const feel = () => {
+    if (st.vibrate && typeof navigator !== "undefined" && navigator.vibrate) {
+      try { navigator.vibrate(8); } catch (e) { /* 非対応 */ }
+    }
+  };
+  const flash = (k) => setHit((h) => ({ k, n: h.n + 1 }));
+  const bump = (k, d) => {
+    flash(k);
+    if (d < 0 && !(st[k] > 0)) { say(`${KEY_LABEL[k] || k} はすでに0です`); return; }
+    feel();
+    setNotice(null);
+    commit((s) => ({ ...s, [k]: Math.max(0, (s[k] || 0) + d) }));
+  };
+  const undo = () => {
+    const e = S.past[S.past.length - 1];
+    if (!e) return;
+    dispatch({ type: "undo" });
+    feel();
+    flash(firstKey(e));
+    say(`戻しました：${e.label}`);
+  };
+  const redo = () => {
+    const e = S.future[0];
+    if (!e) return;
+    dispatch({ type: "redo" });
+    feel();
+    flash(firstKey(e));
+    say(`やり直しました：${e.label}`);
+  };
+  const jump = (n, text) => { dispatch({ type: "jump", n }); say(text); };
+
+  const go = (id) => {
+    setTab(id);
+    requestAnimationFrame(() => {
+      const tabs = tabsRef.current;
+      const panel = panelRef.current;
+      if (!tabs || !panel) return;
+      const btn = tabs.querySelector(`[data-tab="${id}"]`);
+      if (btn) btn.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const top = panel.getBoundingClientRect().top + window.scrollY - tabs.offsetHeight - 8;
+      if (window.scrollY > top) window.scrollTo(0, Math.max(0, top));
+    });
+  };
+
+  /* ---- 集計値 ---- */
+  const best = post.indexOf(Math.max(...post));
+  const evPayout = post.reduce((a, p, i) => a + p * PAYOUT[i], 0);
+  const evPayoutMax = post.reduce((a, p, i) => a + p * PAYOUT_MAX[i], 0);
+
+  const totalG = num(st.totalG);
+  const bonusTotal = L.bigD + L.bigI + L.reg;
+  const rbBgTotal = st.rbBgNormal + st.rbBgSilver + st.rbBgGold;
+  const artG = artGames(st);
+  const artSets = st.artLv1 + st.artLv2 + st.artLv3;
+  const spCount = { same: spSum(st, "same"), ish: spSum(st, "ish"), reg: spSum(st, "reg") };
+  const spTotal = spCount.same + spCount.ish + spCount.reg;
+  const checkedTotal = GROUPS.reduce((a, g) => a + spCount[g.key] + (st[g.o] || 0), 0);
+
+  const anyInput =
+    totalG > 0 || artG > 0 || num(st.rbG) > 0 ||
+    st.cycle30 + st.cycle50 + st.cycle70 + st.cycle200 + st.logoS + st.logoL +
+    st.bbMiss0 + st.bbMiss3 + st.lv2dN + st.lv2iN + st.lv2oN > 0 ||
+    st.conf.s2 || st.conf.s3 || st.conf.s4 || st.conf.s5 || st.conf.s6;
+
+  const obs = (n, k, d = 1, table) =>
+    k && n ? `1/${fmt(denom(n, k), d)}${table ? `　≒設定${nearest(denom(n, k), table)}` : ""}` : "–";
+
+  const reset = () => {
+    if (!confirmReset) { setConfirmReset(true); setTimeout(() => setConfirmReset(false), 3000); return; }
+    commit(() => ({ ...emptyState(), vibrate: st.vibrate }), { label: "記録をすべて消す" });
+    setConfirmReset(false);
+    say("記録を消しました（戻すで取り消せます）");
+  };
+
+  const buildSummary = () => {
+    const out = [];
+    out.push("■ うみねこのなく頃に２ 設定判別ツール");
+    out.push(`総G ${totalG} / 同色BIG ${L.bigD} / 異色BIG ${L.bigI} / REG ${L.reg}（合算 1/${fmt(denom(totalG, bonusTotal))}）`);
+    for (const g of GROUPS) {
+      const n = groupTotal(st, g);
+      if (!n) continue;
+      const sps = SP.filter((s) => s.g === g.key && st[s.k] > 0).map((s) => `${CHIP[s.k]}:${st[s.k]}`);
+      out.push(`　${g.short} ${n}（${[...sps, `その他:${st[g.o]}`, `契機不明:${st[g.u]}`].join(" / ")}）`);
+    }
+    if (spTotal) out.push(`特定ボーナス合算 1/${fmt(denom(totalG, spTotal))}`);
+    if (artG > 0) {
+      out.push(`ART Lv.1 ${st.artLv1} / Lv.2 ${st.artLv2} / Lv.3 ${st.artLv3} = ${artG}G`);
+      out.push(`　共通ベル ${st.bell}（1/${fmt(denom(artG, st.bell), 2)}）/ ハズレ ${st.artMiss}（1/${fmt(denom(artG, st.artMiss), 1)}）`);
+    }
+    if (num(st.rbG) > 0) out.push(`RB ${num(st.rbG)}G：青7斜め ${st.naname}（1/${fmt(denom(num(st.rbG), st.naname))}）/ 平行 ${st.heiko}`);
+    if (st.cycle30 + st.cycle50 + st.cycle70 + st.cycle200 > 0) out.push(`周期初期pt 30:${st.cycle30} 50:${st.cycle50} 70:${st.cycle70} 200:${st.cycle200}`);
+    if (st.logoS + st.logoL > 0) out.push(`ロゴ発光 小:${st.logoS} 大:${st.logoL}`);
+    if (st.bbMiss0 + st.bbMiss3 > 0) out.push(`BB中ハズレ 0pt:${st.bbMiss0} 3pt:${st.bbMiss3}`);
+    if (st.lv2dN + st.lv2iN + st.lv2oN > 0)
+      out.push(`Lv.2ナビ 同色 ${st.lv2dK}/${st.lv2dN}・異色 ${st.lv2iK}/${st.lv2iN}・REG他 ${st.lv2oK}/${st.lv2oN}（解析値×75%で評価）`);
+    if (rbBgTotal > 0) out.push(`RB背景 通常:${st.rbBgNormal} 銀:${st.rbBgSilver} 金:${st.rbBgGold}（銀率 ${fmt((st.rbBgSilver / rbBgTotal) * 100)}%）`);
+    for (const grp of ART_PIC) {
+      const picked = grp.items.filter((it) => st[it.k] > 0).map((it) => `${it.label}:${st[it.k]}`);
+      if (picked.length) out.push(`BB中1枚絵［${grp.g}］${picked.join(" / ")}`);
+    }
+    if (min > 1) out.push(`濃厚要素：設定${min}以上`);
+    out.push("推定 " + post.map((p, i) => `[${i + 1}] ${fmt(p * 100)}%`).join(" "));
+    out.push(`期待出玉率 ${fmt(evPayout, 2)}%（完全攻略時 ${fmt(evPayoutMax, 2)}%）`);
+    return out.join("\n");
+  };
+
+  const copy = async () => {
+    const text = buildSummary();
+    try {
+      await navigator.clipboard.writeText(text);
+      say("集計をコピーしました");
+    } catch (e) {
+      setSummary(text);
+    }
+  };
+
+  /* ---- 表示の部品 ---- */
+  const tile = (k, label, note, opts = {}) => (
+    <Tile
+      key={k}
+      k={k}
+      label={label}
+      note={note}
+      value={st[k] || 0}
+      red={opts.red && st[k] > 0}
+      hit={hit}
+      onInc={() => bump(k, 1)}
+      onDec={() => bump(k, -1)}
+      onEdit={() => { feel(); setSheet({ edit: k }); }}
+    />
+  );
+
+  const declaredClass = "um-truth um-truth--red" + (declare.on ? " is-declared" : "");
+  const pctBest = `${fmt(post[best] * 100)}%`;
+
+  /* 盤面バーの一行（短い形） */
+  let verdictShort;
+  if (!anyInput) {
+    verdictShort = null;
+  } else if (st.conf.s6) {
+    verdictShort = <span key={"d" + declare.n} className={declaredClass}><T>設定6である</T></span>;
+  } else {
+    verdictShort = (
+      <>
+        {min > 1 ? <span key={"d" + declare.n} className={declaredClass}><T>{`設定${min}以上`}</T></span> : null}
+        <span className="um-truth um-truth--blue"><T>{`最有力 設定${best + 1}（${pctBest}）`}</T></span>
+      </>
+    );
+  }
+
+  /* 詳細の結論（文の形） */
+  let verdictFull;
+  if (!anyInput) {
+    verdictFull = <span className="u2-idle">ボーナスや小役を数え始めると、ここに推理が出ます。</span>;
+  } else if (st.conf.s6) {
+    verdictFull = <span className="um-truth um-truth--red"><T>この台は設定6である。</T></span>;
+  } else {
+    verdictFull = (
+      <>
+        {min > 1 ? <span className="um-truth um-truth--red"><T>{`設定${min}以上である。`}</T></span> : null}
+        <span className="um-truth um-truth--blue"><T>{`最有力は設定${best + 1}（${pctBest}）。ただし、まだ推理にすぎない。`}</T></span>
+      </>
+    );
+  }
+
+  const lastEntry = S.past[S.past.length - 1];
+  let lastText;
+  let lastClass = "u2-last__text";
+  if (saveErr) {
+    lastText = "保存できませんでした。容量や通信を確認してください";
+  } else if (notice) {
+    lastText = notice;
+    lastClass += " is-notice";
+  } else if (lastEntry) {
+    lastText = `直前　${lastEntry.label}`;
+  } else {
+    lastText = "まだ操作はありません";
+    lastClass += " is-muted";
+  }
+
+  /* ---- 各タブの中身 ---- */
+  const panels = {
+    bonus: (
+      <>
+        <NumField label="総ゲーム数" value={st.totalG} onChange={(v) => set("totalG", v, { coalesce: "totalG" })} />
+        <p className="u2-note">当たったボーナスの枠で、当選契機のマスを1回押すだけ。回数と特定ボーナスが同時に記録されます。</p>
+        {GROUPS.map((g) => {
+          const n = groupTotal(st, g);
+          return (
+            <div key={g.key}>
+              <GroupHead name={g.name} count={n} right={obs(totalG, n)} />
+              <div className="u2-tiles">
+                {tile(g.o, "その他の契機", "特定以外を確認")}
+                {SP.filter((s) => s.g === g.key).map((s) => tile(s.k, CHIP[s.k], `1/${fmt(s.p[0], 0)}→1/${fmt(s.p[5], 0)}`))}
+                {tile(g.u, "契機不明", "契機を見ていない")}
+              </div>
+            </div>
+          );
+        })}
+        <Divider>観測値</Divider>
+        <div className="u2-obsgrid u2-obsgrid--one">
+          <Observed label="ボーナス合算" value={obs(totalG, bonusTotal)} />
+          <Observed label="特定ボーナス合算" value={obs(totalG, spTotal, 1, SP_TOTAL)} />
+          <Observed label="契機を確認した割合" value={bonusTotal ? `${fmt((checkedTotal / bonusTotal) * 100)}%（${checkedTotal}/${bonusTotal}）` : "–"} />
+        </div>
+        <p className="u2-note">特定ボーナス合算の目安は設定1 1/606.8、設定6 1/428.3。</p>
+      </>
+    ),
+    rb: (
+      <>
+        <NumField label="RB総ゲーム数" hint="RBを消化したG数の累計" value={st.rbG} onChange={(v) => set("rbG", v, { coalesce: "rbG" })} />
+        <div className="u2-tiles">
+          {tile("naname", "青7斜め揃い", "1/555.4→1/258.0")}
+          {tile("heiko", "青7平行揃い", "1/148.3、設定差なし")}
+        </div>
+        <div className="u2-obsgrid u2-obsgrid--one">
+          <Observed label="青7斜め" value={obs(num(st.rbG), st.naname, 1, P.b7naname)} />
+        </div>
+        <Divider>キャラ紹介の背景</Divider>
+        <p className="u2-note">全て銀なら設定2以上、全て金なら設定6が濃厚。数えた割合は推定に入れていません。</p>
+        <div className="u2-tiles u2-tiles--3">
+          {tile("rbBgNormal", "通常", "割合は未判明")}
+          {tile("rbBgSilver", "銀", "割合は未判明")}
+          {tile("rbBgGold", "金", "割合は未判明")}
+        </div>
+        <div className="u2-obsgrid">
+          <Observed label="銀の割合" value={rbBgTotal ? `${fmt((st.rbBgSilver / rbBgTotal) * 100)}%` : "–"} />
+          <Observed label="金の割合" value={rbBgTotal ? `${fmt((st.rbBgGold / rbBgTotal) * 100)}%` : "–"} />
+        </div>
+      </>
+    ),
+    bb: (
+      <>
+        <Divider>ハズレ成立時の真実ポイント</Divider>
+        <div className="u2-tiles">
+          {tile("bbMiss0", "0pt")}
+          {tile("bbMiss3", "3pt", "70.3%→80.1%")}
+        </div>
+        <div className="u2-obsgrid u2-obsgrid--one">
+          <Observed label="3pt獲得率" value={st.bbMiss0 + st.bbMiss3 ? `${fmt((st.bbMiss3 / (st.bbMiss0 + st.bbMiss3)) * 100)}%` : "–"} />
+        </div>
+        <Divider>1枚絵（ビタ押し成功時）</Divider>
+        <p className="u2-note">1枚絵の示唆は推定計算には入れていません。「朱志香」「シエスタ姉妹」「縁寿＆7姉妹」「ミニキャラ」は、数えると濃厚要素に自動で反映されます。</p>
+        {ART_PIC.map((grp) => (
+          <div key={grp.g}>
+            <GroupHead minor name={grp.g} right={`計 ${grp.items.reduce((a, it) => a + (st[it.k] || 0), 0)}`} />
+            <div className="u2-tiles">
+              {grp.items.map((it) => tile(it.k, it.label, it.sub, { red: it.tone === "red" }))}
+            </div>
+          </div>
+        ))}
+      </>
+    ),
+    art: (
+      <>
+        <GroupHead name="幻想論戦のセット数" right={artG ? `${artG}G（${artSets}セット）` : "–"} />
+        <div className="u2-tiles u2-tiles--3">
+          {tile("artLv1", "Lv.1", "30G")}
+          {tile("artLv2", "Lv.2", "50G")}
+          {tile("artLv3", "Lv.3", "90G")}
+        </div>
+        <Divider>小役（ART中のみ）</Divider>
+        <div className="u2-tiles">
+          {tile("bell", "共通ベル", "ナビなしベル")}
+          {tile("artMiss", "ハズレ", "リーチ目を含む")}
+        </div>
+        <div className="u2-obsgrid u2-obsgrid--one">
+          <Observed label="共通ベル" value={obs(artG, st.bell, 2, P.bell)} />
+          <Observed label="ハズレ" value={obs(artG, st.artMiss, 1, P.artMiss)} />
+        </div>
+        <p className="u2-note">共通ベルは設定1→6で1/29.4→1/21.0。</p>
+
+        <Divider>周期到達時の初期真実ポイント</Divider>
+        <p className="u2-note">周期（CZ間200G）から運命分岐モードに入った時だけ数えます。</p>
+        <div className="u2-tiles">
+          {tile("cycle30", "30pt")}
+          {tile("cycle50", "50pt")}
+          {tile("cycle70", "70pt", "全設定共通12.5%")}
+          {tile("cycle200", "200pt", "1.6%→5.1%")}
+        </div>
+
+        <Divider>Lv.2ナビ</Divider>
+        <p className="u2-note">解析値にLv.2成立抽選（75%）を掛けた値で判定します。逆転リプレイ、逆転チェリーは含めません。</p>
+        {LV2_ROWS.map((r) => (
+          <div key={r.row}>
+            <GroupHead
+              minor
+              name={r.label}
+              right={st[r.nKey] ? `発生率 ${fmt((Math.min(st[r.kKey], st[r.nKey]) / st[r.nKey]) * 100)}%` : "発生率 –"}
+            />
+            <div className="u2-tiles u2-tiles--2">
+              {tile(r.nKey, "ART突入")}
+              {tile(r.kKey, "うちLv.2ナビ", `${fmt(lv2p(r.row, 0) * 100)}%→${fmt(lv2p(r.row, 5) * 100)}%`)}
+            </div>
+          </div>
+        ))}
+      </>
+    ),
+    normal: (
+      <>
+        <Divider>ステージチェンジのロゴ発光（偶奇判別）</Divider>
+        <div className="u2-tiles">
+          {tile("logoS", "発光・小")}
+          {tile("logoL", "発光・大")}
+        </div>
+        <div className="u2-obsgrid u2-obsgrid--one">
+          <Observed label="大の割合" value={st.logoS + st.logoL ? `${fmt((st.logoL / (st.logoS + st.logoL)) * 100)}%` : "–"} />
+        </div>
+      </>
+    ),
+    conf: (
+      <>
+        <Divider>濃厚要素（設定の下限を決めます）</Divider>
+        {CONF_ROWS.map((r) => (
+          <Check
+            key={r.k}
+            checked={!!st.conf[r.k]}
+            onChange={(v) => { feel(); commit((s) => ({ ...s, conf: { ...s.conf, [r.k]: v } })); }}
+            label={r.label}
+            note={r.src}
+            labelClass={st.conf[r.k] ? "um-truth um-truth--red" : ""}
+          />
+        ))}
+        <Divider>期待度の示唆（推定には入れていません）</Divider>
+        <div className="u2-tiles">
+          {tile("memoOdd", "奇数設定 期待度UP", "転落ボイス 南條・金蔵")}
+          {tile("memoEven", "偶数設定 期待度UP", "転落ボイス 夏妃・楼座")}
+          {tile("memo2", "設定2以上 期待度UP", "縁寿・ドラノール／超パー22%")}
+        </div>
+      </>
+    ),
+    db: (
+      <>
+        <p className="u2-db-src">
+          このツールが設定判別に使っている値の一覧です。出典：
+          <a className="um-link" href={SOURCE_URL} target="_blank" rel="noopener noreferrer">ちょんぼりすた（うみねこのなく頃に２ 機種ページ）</a>
+          <T>。2026年6月20日更新時点の値です。</T>
+        </p>
+
+        <Divider>推定に使っている値</Divider>
+        <DbTable
+          title="ボーナス確率"
+          rows={[
+            ["同色BIG合算", ...oneOver(P.bigD)],
+            ["異色BIG合算", ...oneOver(P.bigI)],
+            ["REG", ...oneOver(P.reg)],
+            ["ボーナス合算", ...oneOver(P.bigD.map((_, i) => 1 / (1 / P.bigD[i] + 1 / P.bigI[i] + 1 / P.reg[i])))],
+            ["特定ボーナス合算", ...oneOver(SP_TOTAL)],
+          ]}
+        />
+        <DbTable
+          title="特定ボーナス（当選契機ごと）"
+          rows={SP.map((sp) => [`${GROUPS.find((g) => g.key === sp.g).short}・${CHIP[sp.k]}`, ...oneOver(sp.p)])}
+          note="契機を確認した当選は「特定かどうか」も判定に使い、契機不明の当選は種別の確率だけで判定します。"
+        />
+        <DbTable
+          title="ART中"
+          rows={[
+            ["共通ベル（ナビなしベル）", ...oneOver(P.bell)],
+            ["ハズレ", ...oneOver(P.artMiss)],
+          ]}
+          note="ART中のG数はLv.1＝30G、Lv.2＝50G、Lv.3＝90Gのセット数から数えます。"
+        />
+        <DbTable
+          title="RB中"
+          rows={[["青7斜め揃い", ...oneOver(P.b7naname)]]}
+          note={`青7平行揃いは1/${fmt(P.b7heiko)}で設定差なし（確認用）。`}
+        />
+        <DbTable
+          title="BB中 ハズレ成立時の真実ポイント"
+          rows={[["0pt", ...pcts(D.bbMiss.p0)], ["3pt", ...pcts(D.bbMiss.p3)]]}
+        />
+        <DbTable
+          title="周期到達時の初期真実ポイント"
+          rows={[
+            ["30pt", ...pcts(D.cycle.p30)],
+            ["50pt", ...pcts(D.cycle.p50)],
+            ["70pt", ...pcts(D.cycle.p70)],
+            ["200pt", ...pcts(D.cycle.p200)],
+          ]}
+        />
+        <DbTable
+          title="Lv.2ナビ（Lv.2成立時の振り分け）"
+          rows={[
+            ...LV2_ROWS.map((r) => [r.label, ...pcts(D.lv2[r.row])]),
+            ...LV2_ROWS.map((r) => [`${r.label}（判定値）`, ...pcts([0, 1, 2, 3, 4, 5].map((i) => lv2p(r.row, i) * 100))]),
+          ]}
+          note={`判定値は解析値にLv.2成立抽選（${fmt(D.lv2.establish * 100, 0)}%）を掛けた値です。逆転リプレイ、逆転チェリーは含めません。`}
+        />
+        <DbTable
+          title="ステージチェンジのロゴ発光"
+          rows={[["発光・小", ...pcts(D.logo.small)], ["発光・大", ...pcts(D.logo.large)]]}
+        />
+        <DbTable
+          title="機械割（期待出玉率の計算に使用）"
+          rows={[["機械割", ...pcts(PAYOUT)], ["完全攻略時", ...pcts(PAYOUT_MAX)]]}
+        />
+
+        <Divider>演出ごとの示唆</Divider>
+        <p className="u2-note">濃厚となる演出を見たら「濃厚」タブでチェックすると、推定の下限に反映されます。1枚絵は数えるだけで自動で反映されます。</p>
+        {ART_PIC.map((grp) => (
+          <DbList
+            key={grp.g}
+            title={`BB中の1枚絵・${grp.g}`}
+            head={["1枚絵", "示唆"]}
+            rows={grp.items.map((it) => [it.label, it.sub])}
+          />
+        ))}
+        <p className="u2-note">ビタ押し成功時（予告発生時に限る）の1枚絵。初代BBも示唆内容は同じです。</p>
+        <DbList
+          title="転落時のボイス"
+          head={FALL_VOICES.some((v) => v.line) ? ["キャラ", "セリフ", "示唆"] : ["キャラ", "示唆"]}
+          rows={FALL_VOICES.map((v) => (FALL_VOICES.some((x) => x.line) ? [v.who, v.line || "–", v.hint] : [v.who, v.hint]))}
+          note="運命分岐モードから即転落（ART未突入かつ1回目の転落リプレイで転落）した時のボイスです。"
+        />
+        <DbList
+          title="超パー演出"
+          head={["表示", "示唆"]}
+          rows={CHO_PA}
+          note="ゾロ目のときだけ設定を示唆します。それ以外の数値はボーナス期待度です。"
+        />
+        <DbList
+          title="RB中のキャラ紹介背景"
+          head={["背景", "示唆"]}
+          rows={RB_BG}
+          note="キャラはRB中のベル・2択ベルが2回入賞するごとに入れ替わります。背景ごとの出現率は未公表です。"
+        />
+        <DbList
+          title="メニュー画面「Story collection」"
+          head={["表示", "示唆"]}
+          rows={STORY}
+          note="イラストを全て解放すると、1度だけ表示されます。"
+        />
+      </>
+    ),
+    opt: (
+      <>
+        <Divider>事前分布</Divider>
+        <div className="u2-choices" role="group" aria-label="事前分布">
+          {PRIOR_OPTS.map((o) => (
+            <button key={o.k} type="button" className="um-btn u2-choice" aria-pressed={st.prior === o.k} onClick={() => set("prior", o.k)}>
+              <span>{o.label}</span>
+              <span className="u2-choice__sub"><T>{o.sub}</T></span>
+            </button>
+          ))}
+        </div>
+        <Divider>操作</Divider>
+        <Check
+          checked={!!st.vibrate}
+          onChange={(v) => set("vibrate", v)}
+          label="押したときに短く振動する"
+          note="対応する端末のみ（iPhoneは非対応）"
+        />
+        <p className="u2-note">マスを押すと＋1、右端の−で1減らします。長押し（PCは右クリック）で数値を直接入力できます。押し間違えたら、画面下の戻すボタンで取り消せます。</p>
+        <Divider>記録</Divider>
+        <div className="um-btn-row u2-actions">
+          <button type="button" className="um-btn um-btn--primary" onClick={copy}>集計をコピーする</button>
+          <button type="button" className={"um-btn" + (confirmReset ? " u2-armed" : "")} onClick={reset}>
+            {confirmReset ? <span className="um-truth um-truth--red">もう一度押すと記録を消す</span> : "記録をすべて消す"}
+          </button>
+        </div>
+        {summary ? <textarea readOnly value={summary} rows={10} className="u2-summary" aria-label="集計" /> : null}
+        <p className="u2-note">入力は自動で保存され、次に開いた時もそのまま残ります。記録を消した場合も、戻すで元に戻せます。</p>
+      </>
+    ),
+  };
+
+  /* ---- 履歴の並び（新しい順。取り消した操作は上に薄く出す） ---- */
+  const chrono = [...S.past, ...S.future];
+  const applied = S.past.length;
+
+  return (
+    <div className="um-page u2-root">
+      <style dangerouslySetInnerHTML={{ __html: UM_CSS + TOOL_CSS }} />
+      <div className="u2-wrap">
+        <header className="u2-head">
+          <h1 className="u2-title"><span className="um-truth um-truth--gold">うみねこのなく頃に２　設定判別ツール</span></h1>
+          <p className="u2-sub um-latin">Reading the board from what you counted</p>
+        </header>
+        <hr className="um-chess u2-chess" />
+
+        <nav className="u2-tabs" ref={tabsRef} aria-label="記録する場面">
+          <div className="u2-tabs__in" role="tablist">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                data-tab={t.id}
+                aria-selected={tab === t.id}
+                aria-controls="u2-panel"
+                className="u2-tab"
+                onClick={() => go(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </nav>
+
+        <main id="u2-panel" className="um-frame u2-panel" role="tabpanel" ref={panelRef} aria-label={TABS.find((t) => t.id === tab).label}>
+          {panels[tab]}
+        </main>
+
+      </div>
+
+      {/* 盤面バー */}
+      <div className="u2-dock">
+        <div className="u2-dock__in">
+          <button type="button" className="u2-dock__sum" onClick={() => setSheet("detail")} aria-label="推定の詳細を開く">
+            <span className="u2-dock__row">
+              <span className="u2-dock__verdict">{verdictShort}</span>
+              {anyInput ? <span className="u2-dock__pay">出玉率<span className="um-num">{fmt(evPayout, 1)}%</span></span> : null}
+            </span>
+            <span className="u2-mini" aria-hidden="true">
+              {post.map((p, i) => {
+                const cls = ["u2-mini__cell"];
+                if (anyInput && i === best) cls.push("is-top");
+                if (st.conf.s6 && i === 5) cls.push("is-confirmed");
+                if (p === 0) cls.push("is-out");
+                return (
+                  <span key={i} className={cls.join(" ")}>
+                    <span className="u2-mini__top">
+                      <span className="u2-mini__idx">{i + 1}</span>
+                      <span className="u2-mini__pct um-num">{fmt(p * 100)}</span>
+                    </span>
+                    <span className="u2-mini__track"><span className="u2-mini__fill" style={{ width: `${Math.max(p * 100, p > 0 ? 2 : 0)}%` }} /></span>
+                  </span>
+                );
+              })}
+            </span>
+          </button>
+          <div className="u2-dock__ops">
+            <button type="button" className="u2-iconbtn" onClick={undo} disabled={!S.past.length} aria-label="1つ戻す"><Icon d={ICON.undo} /></button>
+            <button type="button" className="u2-last" onClick={() => setSheet("history")} aria-label={`操作の履歴を開く。${lastText}`}>
+              <span className={lastClass} aria-live="polite"><T>{lastText}</T></span>
+              <span className="u2-last__more">履歴</span>
+            </button>
+            <button type="button" className="u2-iconbtn" onClick={redo} disabled={!S.future.length} aria-label="1つ進む"><Icon d={ICON.redo} /></button>
+          </div>
+        </div>
+      </div>
+
+      {/* 推定の詳細 */}
+      {sheet === "detail" ? (
+        <Sheet title="設定の推定" onClose={() => setSheet(null)}>
+          <div className="u2-detail">
+            <p className="u2-detail__prior">事前分布：{st.prior === "low" ? "低設定寄り" : "均等"}</p>
+            <ul className="um-bars" aria-label="設定ごとの推測確率">
+              {post.map((p, i) => {
+                const cls = ["um-bars__row"];
+                if (anyInput && i === best) cls.push("is-top");
+                if (st.conf.s6 && i === 5) cls.push("is-confirmed");
+                return (
+                  <li key={i} className={cls.join(" ")} style={p === 0 ? { opacity: 0.4 } : undefined}>
+                    <span className="um-bars__label">設定<span className="um-num">{i + 1}</span></span>
+                    <span className="um-bars__track"><span className="um-bars__fill" style={{ width: `${Math.max(p * 100, p > 0 ? 1 : 0)}%` }} /></span>
+                    <span className="um-bars__pct um-num">{fmt(p * 100)}%</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="u2-verdict">{verdictFull}</p>
+            {anyInput ? (
+              <p className="u2-payout">
+                <span>期待出玉率</span>
+                <span>
+                  <span className="um-num u2-payout__val">{fmt(evPayout, 2)}%</span>
+                  <span className="u2-payout__max">完全攻略 <span className="um-num">{fmt(evPayoutMax, 2)}%</span></span>
+                </span>
+              </p>
+            ) : null}
+          </div>
+        </Sheet>
+      ) : null}
+
+      {/* 操作の履歴 */}
+      {sheet === "history" ? (
+        <Sheet title="操作の履歴" onClose={() => setSheet(null)}>
+          <div className="u2-hist__ops">
+            <button type="button" className="um-btn" onClick={undo} disabled={!S.past.length}>1つ戻す</button>
+            <button type="button" className="um-btn" onClick={redo} disabled={!S.future.length}>1つ進む</button>
+          </div>
+          {chrono.length === 0 ? (
+            <p className="u2-hist__empty">まだ操作はありません。</p>
+          ) : (
+            <ol className="u2-hist" reversed>
+              {chrono
+                .map((e, i) => ({ e, i }))
+                .reverse()
+                .map(({ e, i }) => {
+                  const undone = i >= applied;
+                  const latest = i === applied - 1;
+                  return (
+                    <React.Fragment key={e.id}>
+                      {latest && S.future.length ? <li className="u2-hist__now" aria-label="いまの位置">いまの位置</li> : null}
+                      <li className={"u2-hist__item" + (undone ? " is-undone" : "") + (latest ? " is-latest" : "")}>
+                        <span className="u2-hist__time um-num">{hhmmss(e.t)}</span>
+                        <span className="u2-hist__label"><T>{e.label}</T></span>
+                        {undone ? (
+                          <button type="button" className="u2-hist__jump" onClick={() => jump(i + 1, `ここまで進めました：${e.label}`)}>ここまで進む</button>
+                        ) : (
+                          <button type="button" className="u2-hist__jump" onClick={() => jump(i, `この操作の前まで戻しました：${e.label}`)}>この前まで戻す</button>
+                        )}
+                      </li>
+                    </React.Fragment>
+                  );
+                })}
+              {applied === 0 && S.future.length ? <li className="u2-hist__now">いまの位置（最初）</li> : null}
+            </ol>
+          )}
+          {chrono.length ? (
+            <div className="u2-hist__foot">
+              <button
+                type="button"
+                className={"um-btn um-btn--small" + (confirmClear ? " u2-armed" : "")}
+                onClick={() => {
+                  if (!confirmClear) { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 3000); return; }
+                  dispatch({ type: "clearHist" });
+                  setConfirmClear(false);
+                }}
+              >
+                {confirmClear ? <span className="um-truth um-truth--red">もう一度押すと履歴を消す（記録は残ります）</span> : "履歴を消す"}
+              </button>
+            </div>
+          ) : null}
+        </Sheet>
+      ) : null}
+
+      {/* 直接入力 */}
+      {sheet && sheet.edit ? (
+        <Editor
+          k={sheet.edit}
+          value={st[sheet.edit]}
+          onClose={() => setSheet(null)}
+          onSave={(v) => { flash(sheet.edit); commit((s) => ({ ...s, [sheet.edit]: v })); }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Umineko2Settei />);
+</script>
+</body>
+</html>
