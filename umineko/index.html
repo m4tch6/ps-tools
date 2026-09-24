@@ -217,6 +217,7 @@ const emptyState = () => ({
   lv2oN: 0,
   lv2oK: 0,
   conf: { s2: false, s3: false, s4: false, s5: false, s6: false },
+  confAuto: { s2: false, s4: false, s6: false }, // 1枚絵から自動で入れた濃厚チェック（0に戻したら外す）
   memoOdd: 0,
   memoEven: 0,
   memo2: 0,
@@ -854,6 +855,7 @@ const TOOL_CSS = `
 .u2-check[aria-checked="true"] .u2-check__box::after { content: ""; width: 9px; height: 4px; border-left: 2px solid var(--um-on-accent); border-bottom: 2px solid var(--um-on-accent); transform: translateY(-1px) rotate(-45deg); }
 .u2-check__label { grid-column: 2; font-size: 0.84rem; font-weight: 500; letter-spacing: 0.04em; line-height: 1.5; }
 .u2-check__note { grid-column: 2; font-size: 0.68rem; line-height: 1.5; color: var(--um-muted); }
+.u2-check__auto { display: block; margin-top: 0.2rem; color: var(--um-accent); }
 
 /* 選択と操作 */
 .u2-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.4rem; }
@@ -1068,6 +1070,11 @@ function migrate(saved) {
   }
   /* 通常時の小役（確定役A・1枚役B/C）は数えない仕様にしたので、残っていても使わない */
   for (const k of ["bigD", "bigI", "reg", "allChecked", "chkSame", "chkIsh", "chkReg", "normalG", "maiB", "maiC", "kakuA"]) delete s[k];
+  /* 自動チェックの印が無い記録：1枚絵を数えていてチェックが入っている濃厚は、自動で入ったものとみなす */
+  if (!s.confAuto && s.conf) {
+    s.confAuto = {};
+    for (const k of Object.keys(PIC_CONF)) s.confAuto[k] = !!s.conf[k] && picConf(s, k);
+  }
   return s;
 }
 
@@ -1124,18 +1131,35 @@ function applyPatch(s, patch, side) {
 }
 
 /* 1枚絵の濃厚要素は、濃厚チェックへ自動で反映する（同じ操作の一部として記録）。
-   朱志香・シエスタ姉妹（設定1否定）→設定2以上、縁寿＆7姉妹→設定4以上、ミニキャラ→設定6 */
+   朱志香・シエスタ姉妹（設定1否定）→設定2以上、縁寿＆7姉妹→設定4以上、ミニキャラ→設定6。
+   自動で入れたチェックには confAuto で印を付け、その1枚絵が0に戻ったら外す。手で入れたチェックは残す */
+const PIC_CONF = { s2: ["picJessica", "picSiesta"], s4: ["artEnjoNanashimai"], s6: ["artMiniChara"] };
+const picConf = (s, k) => (PIC_CONF[k] || []).some((p) => s[p] > 0);
 function normalize(s) {
-  const s2 = s.conf.s2 || s.picJessica > 0 || s.picSiesta > 0;
-  const s4 = s.conf.s4 || s.artEnjoNanashimai > 0;
-  const s6 = s.conf.s6 || s.artMiniChara > 0;
-  if (s2 === s.conf.s2 && s4 === s.conf.s4 && s6 === s.conf.s6) return s;
-  return { ...s, conf: { ...s.conf, s2, s4, s6 } };
+  const conf = { ...s.conf };
+  const auto = { ...s.confAuto };
+  let changed = false;
+  for (const k of Object.keys(PIC_CONF)) {
+    const on = picConf(s, k);
+    if (on && !conf[k]) {
+      conf[k] = true;
+      auto[k] = true;
+      changed = true;
+    } else if (!on && auto[k]) {
+      conf[k] = false;
+      auto[k] = false;
+      changed = true;
+    }
+  }
+  return changed ? { ...s, conf, confAuto: auto } : s;
 }
+
+/* 濃厚チェックとその印は、数えた項目ではないので履歴の見出しには使わない */
+const isConfKey = (k) => k === "conf" || k === "confAuto";
 
 /* 差分から、履歴に出す一行を作る */
 function describe(patch) {
-  const keys = Object.keys(patch).filter((k) => k !== "conf");
+  const keys = Object.keys(patch).filter((k) => !isConfKey(k));
   const one = (k) => {
     const [b, a] = patch[k];
     const name = KEY_LABEL[k] || k;
@@ -1147,7 +1171,11 @@ function describe(patch) {
     }
     return `${name} → ${a === "" || a === undefined ? "未入力" : a}`;
   };
-  if (keys.length === 1) return one(keys[0]) + (patch.conf ? "（濃厚に反映）" : "");
+  if (keys.length === 1) {
+    if (!patch.conf) return one(keys[0]);
+    const [b, a] = patch.conf;
+    return one(keys[0]) + (CONF_ROWS.some((r) => a[r.k] && !b[r.k]) ? "（濃厚に反映）" : "（濃厚を解除）");
+  }
   if (keys.length === 0 && patch.conf) {
     const [b, a] = patch.conf;
     return CONF_ROWS.filter((r) => !!b[r.k] !== !!a[r.k]).map((r) => `${r.label} ${a[r.k] ? "オン" : "オフ"}`).join("、");
@@ -1163,6 +1191,8 @@ function reducer(S, a) {
       const next = normalize(typeof a.fn === "function" ? a.fn(S.st) : a.fn);
       const patch = diff(S.st, next);
       if (!Object.keys(patch).length) return S;
+      /* 自動チェックの印が整っただけ（画面は変わらない）なら、操作として履歴に残さない */
+      if (Object.keys(patch).every((k) => k === "confAuto")) return { ...S, st: next };
       const t = Date.now();
       const last = S.past[S.past.length - 1];
       /* 入力欄への連続した打ち込みは、1つの操作にまとめる */
@@ -1206,7 +1236,7 @@ function reducer(S, a) {
   }
 }
 
-const firstKey = (e) => (e ? Object.keys(e.patch).find((k) => k !== "conf") || null : null);
+const firstKey = (e) => (e ? Object.keys(e.patch).find((k) => !isConfKey(k)) || null : null);
 const hhmmss = (t) => {
   const d = new Date(t);
   return [d.getHours(), d.getMinutes(), d.getSeconds()].map((x) => String(x).padStart(2, "0")).join(":");
@@ -2101,16 +2131,38 @@ function Umineko2Settei() {
     conf: (
       <>
         <Divider>濃厚要素（設定の下限を決めます）</Divider>
-        {CONF_ROWS.map((r) => (
-          <Check
-            key={r.k}
-            checked={!!st.conf[r.k]}
-            onChange={(v) => { feel(); commit((s) => ({ ...s, conf: { ...s.conf, [r.k]: v } })); }}
-            label={r.label}
-            note={<SrcList items={r.src} />}
-            labelClass={st.conf[r.k] ? "um-truth um-truth--red" : ""}
-          />
-        ))}
+        {CONF_ROWS.map((r) => {
+          /* 1枚絵から自動で入ったチェックは、どの絵によるものかと外し方を添える */
+          const autoPics = st.confAuto && st.confAuto[r.k]
+            ? PICS.filter((p) => (PIC_CONF[r.k] || []).includes(p.k) && st[p.k] > 0).map((p) => p.label)
+            : [];
+          return (
+            <Check
+              key={r.k}
+              checked={!!st.conf[r.k]}
+              onChange={(v) => {
+                /* 1枚絵を数えている間は、その濃厚は外せない（1枚絵を0に戻すと外れる） */
+                if (!v && picConf(st, r.k)) { say("1枚絵を数えているため外せません"); return; }
+                feel();
+                commit((s) => ({
+                  ...s,
+                  conf: { ...s.conf, [r.k]: v },
+                  confAuto: PIC_CONF[r.k] ? { ...s.confAuto, [r.k]: false } : s.confAuto,
+                }));
+              }}
+              label={r.label}
+              note={
+                <>
+                  <SrcList items={r.src} />
+                  {autoPics.length ? (
+                    <span className="u2-check__auto"><T>{`1枚絵（${autoPics.join("・")}）から自動でチェック。BB中タブで0に戻すと外れます`}</T></span>
+                  ) : null}
+                </>
+              }
+              labelClass={st.conf[r.k] ? "um-truth um-truth--red" : ""}
+            />
+          );
+        })}
         <Divider>期待度の示唆（推定には入れていません）</Divider>
         <div className="u2-tiles u2-tiles--wide">
           {tile("memoOdd", "奇数設定", "転落ボイス 南條・金蔵")}
