@@ -955,6 +955,8 @@ const TOOL_CSS = `
 .u2-root { line-break: strict; overflow-wrap: anywhere; }
 .u2-root.is-phrased { word-break: keep-all; }
 .u2-ph, .u2-src { display: inline-block; }
+/* 折り返さないセル・値は、文字単位で折る指定も切る（列幅を短く見積もられて隣に重なるのを防ぐ） */
+.um-table th, .um-table td.um-num, .u2-obs__val { overflow-wrap: normal; }
 .u2-note, .u2-check__note, .u2-db-src, .u2-voice__line, .u2-verdict { text-wrap: pretty; }
 .u2-title { text-wrap: balance; }
 .u2-root .u2-red { color: var(--um-truth-red); }
@@ -1307,7 +1309,9 @@ const nums = (text, key = "") => {
   if (parts.length === 1) return text;
   return parts.map((p, i) => (i % 2 === 1 ? <span key={key + i} className="um-num">{p}</span> : p));
 };
-/* 画面に出す文字列はこれを通す（数値の書体をそろえ、文節の切れ目で折り返す） */
+/* 画面に出す文字列はこれを通す（数値の書体をそろえ、文節の切れ目で折り返す）。
+   折り返さない場所（表の項目名・観測値・盤面バー）には使わず、nums だけを通す。
+   文節の区切りがあると、Safari はそこで折れる前提で列幅を短く見積もり、文字が隣に重なる */
 function T({ children }) {
   if (children === null || children === undefined || children === false) return null;
   const text = String(children);
@@ -1466,7 +1470,7 @@ const GroupHead = ({ name, count, right, minor }) => (
 const Observed = ({ label, value }) => (
   <p className="u2-obs">
     <span><T>{label}</T></span>
-    <span className={"u2-obs__val" + (value === "–" ? " is-empty" : "")}><T>{value}</T></span>
+    <span className={"u2-obs__val" + (value === "–" ? " is-empty" : "")}>{nums(value)}</span>
   </p>
 );
 
@@ -1483,13 +1487,13 @@ function DbTable({ title, rows, note }) {
           <thead>
             <tr>
               <th scope="col">項目</th>
-              {DB_HEAD.map((h) => <th key={h} scope="col"><T>{h}</T></th>)}
+              {DB_HEAD.map((h) => <th key={h} scope="col">{nums(h)}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r[0]}>
-                <th scope="row"><T>{r[0]}</T></th>
+                <th scope="row">{nums(r[0])}</th>
                 {r.slice(1).map((v, i) => <td key={i} className="um-num">{v}</td>)}
               </tr>
             ))}
@@ -1511,7 +1515,7 @@ function DbList({ title, head, rows, note }) {
           <tbody>
             {rows.map((r) => (
               <tr key={r[0]}>
-                <th scope="row"><T>{r[0]}</T></th>
+                <th scope="row">{nums(r[0])}</th>
                 {r.slice(1).map((v, i) => <td key={i} className={STRONG_RE.test(v) ? "u2-red" : undefined}><T>{v}</T></td>)}
               </tr>
             ))}
@@ -1960,12 +1964,12 @@ function Umineko2Settei() {
   if (!anyInput) {
     verdictShort = null;
   } else if (st.conf.s6) {
-    verdictShort = <span key={"d" + declare.n} className={declaredClass}><T>設定6である</T></span>;
+    verdictShort = <span key={"d" + declare.n} className={declaredClass}>{nums("設定6である")}</span>;
   } else {
     verdictShort = (
       <>
-        {min > 1 ? <span key={"d" + declare.n} className={declaredClass}><T>{`設定${min}以上`}</T></span> : null}
-        <span className="um-truth um-truth--blue"><T>{`最有力 設定${best + 1}（${pctBest}）`}</T></span>
+        {min > 1 ? <span key={"d" + declare.n} className={declaredClass}>{nums(`設定${min}以上`)}</span> : null}
+        <span className="um-truth um-truth--blue">{nums(`最有力 設定${best + 1}（${pctBest}）`)}</span>
       </>
     );
   }
@@ -2198,7 +2202,7 @@ function Umineko2Settei() {
         <DbTable
           title="ART中"
           rows={[
-            ["共通ベル（ナビなしベル）", ...oneOver(P.bell)],
+            ["共通ベル", ...oneOver(P.bell)],
             ["ハズレ", ...oneOver(P.artMiss)],
           ]}
           note="ART中のG数はLv.1＝30G、Lv.2＝50G、Lv.3＝90Gのセット数から数えます。"
