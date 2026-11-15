@@ -1510,7 +1510,7 @@ function RangeAdd({ total, onAdd, onEdit, onError }) {
       <div className="u2-range__row">
         <input className="u2-range__input um-num" inputMode="numeric" placeholder="0" aria-label="数え始めのG数" value={a} onFocus={(e) => e.target.select()} onChange={digits(setA)} onKeyDown={onKey} />
         <span className="u2-range__sep" aria-hidden="true">〜</span>
-        <input className="u2-range__input um-num" inputMode="numeric" placeholder="208" aria-label="数え終わりのG数" value={b} onFocus={(e) => e.target.select()} onChange={digits(setB)} onKeyDown={onKey} />
+        <input className="u2-range__input um-num" inputMode="numeric" placeholder="100" aria-label="数え終わりのG数" value={b} onFocus={(e) => e.target.select()} onChange={digits(setB)} onKeyDown={onKey} />
         <span className="u2-range__sep">G</span>
         <button type="button" className="um-btn um-btn--small u2-range__add" onClick={submit}>
           {ok ? <>＋<span className="um-num">{n}</span>G 加算</> : "加算"}
@@ -2199,6 +2199,15 @@ function Umineko2Settei() {
     ),
     normal: (
       <>
+        <Divider>ステージチェンジのロゴ発光（偶奇判別）</Divider>
+        <div className="u2-tiles">
+          {tile("logoS", "発光・小", "奇数設定で多い")}
+          {tile("logoL", "発光・大", "偶数設定で多い")}
+        </div>
+        <div className="u2-obsgrid u2-obsgrid--one">
+          <Observed label="大の割合" value={st.logoS + st.logoL ? `${fmt((st.logoL / (st.logoS + st.logoL)) * 100)}%` : "–"} />
+        </div>
+
         <Divider>ベル（通常時・運命分岐モード中）</Divider>
         <Check
           checked={!!st.nmOn}
@@ -2228,15 +2237,6 @@ function Umineko2Settei() {
             </div>
           </>
         ) : null}
-
-        <Divider>ステージチェンジのロゴ発光（偶奇判別）</Divider>
-        <div className="u2-tiles">
-          {tile("logoS", "発光・小", "奇数設定で多い")}
-          {tile("logoL", "発光・大", "偶数設定で多い")}
-        </div>
-        <div className="u2-obsgrid u2-obsgrid--one">
-          <Observed label="大の割合" value={st.logoS + st.logoL ? `${fmt((st.logoL / (st.logoS + st.logoL)) * 100)}%` : "–"} />
-        </div>
       </>
     ),
     conf: (
