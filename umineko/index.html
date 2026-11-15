@@ -56,8 +56,7 @@ const P = {
 
 /* ---- 通常時・運命分岐モード中のベル ----
    通常時は共通ベルと2択ベル正解の見分けが付かないので、ベル揃いをまとめて数える。
-   2択ベルは1/4.5で成立し、半分を取れるものとして扱う（複数の解析サイトの記載による）。
-   1/4.5が正しければ、こぼしを数えない方がブレは小さい。こぼしを数える方は1/4.5を使わない保険 */
+   2択ベルは1/4.5で成立し、半分を取れるものとして扱う（複数の解析サイトの記載による） */
 const NM = {
   choice: 4.5,   // 2択ベルの成立確率（分母）
   hit: 0.5,      // 2択ベルを取れる割合
@@ -65,20 +64,6 @@ const NM = {
 /* ベル揃い合算（共通ベル＋2択ベル正解）の1Gあたりの確率 */
 const nmBellP = (i) => 1 / P.bell[i] + NM.hit / NM.choice;
 const NM_BELL = [0, 1, 2, 3, 4, 5].map((i) => 1 / nmBellP(i)); // 分母の表（1/6.89〜1/6.30）
-/* こぼしも数える場合：2択ベルの成立確率 q は決め打ちにせず、数えた結果に最も合う値を設定ごとに探す。
-   1G の結果は「ベル揃い（共通＋2択正解）／こぼし／その他」の3通り。q について上に凸なので三分探索で足りる */
-function nmProfileLogL(G, bell, kobo, i) {
-  const pb = 1 / P.bell[i];
-  const rest = Math.max(0, G - bell - kobo);
-  const f = (q) =>
-    bell * ln(pb + q * NM.hit) + (kobo > 0 ? kobo * ln(q * (1 - NM.hit)) : 0) + rest * ln(1 - pb - q);
-  let lo = 1e-9, hi = 1 - pb - 1e-9;
-  for (let n = 0; n < 80; n++) {
-    const a = lo + (hi - lo) / 3, b = hi - (hi - lo) / 3;
-    if (f(a) < f(b)) lo = a; else hi = b;
-  }
-  return f((lo + hi) / 2);
-}
 
 /* ---- 振り分け（％） ---- */
 const D = {
@@ -238,8 +223,7 @@ const emptyState = () => ({
   logoL: 0,
   nmG: 0,          // 通常時＋運命分岐モードのG数（区間入力で加算）
   nmBell: 0,       // その間のベル揃い（共通ベル＋2択ベル正解）
-  nmKobo: 0,       // その間の2択ベルこぼし
-  nmUseKobo: false, // こぼしも数えて判定する（オフなら2択ベル1/4.5の仮定で判定）
+  nmOn: true,      // 通常時のベルを数えて判定に使う（オフにすると入力欄を隠し、判定からも外す）
   lv2dN: 0,
   lv2dK: 0,
   lv2iN: 0,
@@ -349,17 +333,12 @@ function computePosterior(st) {
     }
 
     // 通常時・運命分岐モード中のベル揃い
-    // G数だけ入れてベルをまだ数えていない間は、0回として扱わず判定に入れない。
-    // こぼしを数える設定でも、こぼしが0の間は1/4.5の仮定で判定する（全部が共通ベルと見なされるのを防ぐ）
+    // G数だけ入れてベルをまだ数えていない間は、0回として扱わず判定に入れない
     const NG = st.nmG || 0;
-    if (NG > 0 && st.nmBell > 0) {
-      const nb = Math.min(st.nmBell || 0, NG);
-      if (st.nmUseKobo && st.nmKobo > 0) {
-        L += nmProfileLogL(NG, nb, Math.min(st.nmKobo || 0, NG - nb), i);
-      } else {
-        const r = nmBellP(i);
-        L += nb * ln(r) + (NG - nb) * ln(1 - r);
-      }
+    if (st.nmOn && NG > 0 && st.nmBell > 0) {
+      const nb = Math.min(st.nmBell, NG);
+      const r = nmBellP(i);
+      L += nb * ln(r) + (NG - nb) * ln(1 - r);
     }
 
     // RB中 青7斜め揃い
@@ -1129,7 +1108,7 @@ function migrate(saved) {
     }
   }
   /* 通常時の小役（確定役A・1枚役B/C）は数えない仕様にしたので、残っていても使わない */
-  for (const k of ["bigD", "bigI", "reg", "allChecked", "chkSame", "chkIsh", "chkReg", "normalG", "maiB", "maiC", "kakuA"]) delete s[k];
+  for (const k of ["bigD", "bigI", "reg", "allChecked", "chkSame", "chkIsh", "chkReg", "normalG", "maiB", "maiC", "kakuA", "nmKobo", "nmUseKobo"]) delete s[k];
   /* 自動チェックの印が無い記録：1枚絵を数えていてチェックが入っている濃厚は、自動で入ったものとみなす */
   if (!s.confAuto && s.conf) {
     s.confAuto = {};
@@ -1157,7 +1136,7 @@ const KEY_LABEL = {
   bbMiss0: "BB中ハズレ 0pt", bbMiss3: "BB中ハズレ 3pt",
   cycle30: "初期真実 30pt", cycle50: "初期真実 50pt", cycle70: "初期真実 70pt", cycle200: "初期真実 200pt",
   logoS: "ロゴ発光・小", logoL: "ロゴ発光・大",
-  nmG: "通常時G数", nmBell: "通常時ベル揃い", nmKobo: "2択ベルこぼし", nmUseKobo: "ベルこぼしを数える",
+  nmG: "通常時G数", nmBell: "通常時ベル揃い", nmOn: "通常時ベルのカウント",
   lv2dN: "同色BB後 ART突入", lv2dK: "同色BB後 Lv.2ナビ",
   lv2iN: "異色BB後 ART突入", lv2iK: "異色BB後 Lv.2ナビ",
   lv2oN: "REG後・その他 ART突入", lv2oK: "REG後・その他 Lv.2ナビ",
@@ -1982,7 +1961,7 @@ function Umineko2Settei() {
   const anyInput =
     totalG > 0 || artG > 0 || num(st.rbG) > 0 ||
     st.cycle30 + st.cycle50 + st.cycle70 + st.cycle200 + st.logoS + st.logoL +
-    st.bbMiss0 + st.bbMiss3 + st.lv2dN + st.lv2iN + st.lv2oN > 0 || (st.nmG > 0 && st.nmBell > 0) ||
+    st.bbMiss0 + st.bbMiss3 + st.lv2dN + st.lv2iN + st.lv2oN > 0 || (st.nmOn && st.nmG > 0 && st.nmBell > 0) ||
     st.conf.s2 || st.conf.s3 || st.conf.s4 || st.conf.s5 || st.conf.s6;
 
   const obs = (n, k, d = 1, table) =>
@@ -2013,10 +1992,7 @@ function Umineko2Settei() {
     if (num(st.rbG) > 0) out.push(`RB ${num(st.rbG)}G：青7斜め ${st.naname}（1/${fmt(denom(num(st.rbG), st.naname))}）/ 平行 ${st.heiko}`);
     if (st.cycle30 + st.cycle50 + st.cycle70 + st.cycle200 > 0) out.push(`周期初期pt 30:${st.cycle30} 50:${st.cycle50} 70:${st.cycle70} 200:${st.cycle200}`);
     if (st.logoS + st.logoL > 0) out.push(`ロゴ発光 小:${st.logoS} 大:${st.logoL}`);
-    if (st.nmG > 0) {
-      out.push(`通常時 ${st.nmG}G：ベル揃い ${st.nmBell}（1/${fmt(denom(st.nmG, st.nmBell), 2)}）` +
-        (st.nmUseKobo ? ` / こぼし ${st.nmKobo} → 共通ベル推定 1/${fmt(denom(st.nmG, st.nmBell - st.nmKobo), 1)}` : "（こぼしは数えない設定）"));
-    }
+    if (st.nmOn && st.nmG > 0) out.push(`通常時 ${st.nmG}G：ベル揃い ${st.nmBell}（1/${fmt(denom(st.nmG, st.nmBell), 2)}）`);
     if (st.bbMiss0 + st.bbMiss3 > 0) out.push(`BB中ハズレ 0pt:${st.bbMiss0} 3pt:${st.bbMiss3}`);
     if (st.lv2dN + st.lv2iN + st.lv2oN > 0)
       out.push(`Lv.2ナビ 同色 ${st.lv2dK}/${st.lv2dN}・異色 ${st.lv2iK}/${st.lv2iN}・REG他 ${st.lv2oK}/${st.lv2oN}（解析値×75%で評価）`);
@@ -2224,36 +2200,34 @@ function Umineko2Settei() {
     normal: (
       <>
         <Divider>ベル（通常時・運命分岐モード中）</Divider>
-        <p className="u2-note"><T>通常時と運命分岐モード中に数えます。ボーナス中とART中は含めません。G数は液晶の表示で、数え始めと数え終わりを入れます。</T></p>
-        <RangeAdd
-          total={st.nmG}
-          onAdd={(from, to) => {
-            feel();
-            setNotice(null);
-            commit((s) => ({ ...s, nmG: (s.nmG || 0) + (to - from) }), { label: `通常時G数 ＋${to - from}G（${from}〜${to}）` });
-          }}
-          onEdit={() => { feel(); setSheet({ edit: "nmG" }); }}
-          onError={say}
-        />
         <Check
-          checked={!!st.nmUseKobo}
-          onChange={(v) => { feel(); set("nmUseKobo", v); }}
-          label="ベルこぼしも数える"
-          note={st.nmUseKobo
-            ? `2択ベルの確率を1/${fmt(NM.choice)}と決めず、数えたこぼしから逆算して判定します。判別は遅くなります。こぼしが0の間は1/${fmt(NM.choice)}で判定します`
-            : `ベル揃いだけ数えます。2択ベルは1/${fmt(NM.choice)}で成立し、半分を取れるものとして判定します`}
+          checked={!!st.nmOn}
+          onChange={(v) => { feel(); set("nmOn", v); }}
+          label="通常時・運命分岐モード中のベルをカウントする"
+          note={st.nmOn
+            ? "ボーナス中とART中は含めません。G数は液晶の表示で、数え始めと数え終わりを入れます"
+            : "オフの間は判定に使いません。数えた分は残ります"}
         />
-        <div className="u2-tiles">
-          {tile("nmBell", "ベル揃い", "共通・2択どちらも")}
-          {st.nmUseKobo ? tile("nmKobo", "2択ベルこぼし", `目安 1/${fmt(NM.choice / (1 - NM.hit))}`) : null}
-        </div>
-        <div className="u2-obsgrid u2-obsgrid--one">
-          <Observed label="ベル揃い" value={obs(st.nmG, st.nmBell, 2, st.nmUseKobo ? null : NM_BELL)} />
-          {st.nmUseKobo ? (
-            <Observed label="共通ベル（揃い−こぼし）" value={obs(st.nmG, Math.max(0, st.nmBell - st.nmKobo), 1, P.bell)} />
-          ) : null}
-          {st.nmUseKobo ? <Observed label="2択ベルこぼし" value={obs(st.nmG, st.nmKobo, 1)} /> : null}
-        </div>
+        {st.nmOn ? (
+          <>
+            <RangeAdd
+              total={st.nmG}
+              onAdd={(from, to) => {
+                feel();
+                setNotice(null);
+                commit((s) => ({ ...s, nmG: (s.nmG || 0) + (to - from) }), { label: `通常時G数 ＋${to - from}G（${from}〜${to}）` });
+              }}
+              onEdit={() => { feel(); setSheet({ edit: "nmG" }); }}
+              onError={say}
+            />
+            <div className="u2-tiles u2-tiles--wide">
+              {tile("nmBell", "ベル揃い", `共通・2択どちらも　1/${fmt(NM_BELL[0], 2)}→1/${fmt(NM_BELL[5], 2)}`)}
+            </div>
+            <div className="u2-obsgrid u2-obsgrid--one">
+              <Observed label="ベル揃い" value={obs(st.nmG, st.nmBell, 2, NM_BELL)} />
+            </div>
+          </>
+        ) : null}
 
         <Divider>ステージチェンジのロゴ発光（偶奇判別）</Divider>
         <div className="u2-tiles">
@@ -2346,7 +2320,7 @@ function Umineko2Settei() {
             ["ベル揃い合算", ...oneOver(NM_BELL, 2)],
             ["うち共通ベル", ...oneOver(P.bell)],
           ]}
-          note={`ベル揃い合算は、共通ベルに2択ベル正解を足した計算値です。2択ベルは1/${fmt(NM.choice)}で成立し、半分を取れるものとしています。「ベルこぼしも数える」がオンの時は1/${fmt(NM.choice)}を使わず、数えたこぼしから2択ベルの確率を逆算します。`}
+          note={`ベル揃い合算は、共通ベルに2択ベル正解を足した計算値です。2択ベルは1/${fmt(NM.choice)}で成立し、半分を取れるものとしています。`}
         />
         <DbTable
           title="RB中"
@@ -2522,7 +2496,7 @@ function Umineko2Settei() {
           <div className="u2-dock__ops">
             <button type="button" className="u2-iconbtn" onClick={undo} disabled={!S.past.length} aria-label="1つ戻す"><Icon d={ICON.undo} /></button>
             <button type="button" className="u2-last" onClick={() => setSheet("history")} aria-label={`操作の履歴を開く。${lastText}`}>
-              <span className={lastClass} aria-live="polite"><T>{lastText}</T></span>
+              <span className={lastClass} aria-live="polite">{nums(lastText)}</span>
               <span className="u2-last__more">履歴</span>
             </button>
             <button type="button" className="u2-iconbtn" onClick={redo} disabled={!S.future.length} aria-label="1つ進む"><Icon d={ICON.redo} /></button>
