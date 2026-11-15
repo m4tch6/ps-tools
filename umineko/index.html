@@ -54,6 +54,32 @@ const P = {
   b7heiko: 148.3,                                          // RB中 青7平行（設定差なし）
 };
 
+/* ---- 通常時・運命分岐モード中のベル ----
+   通常時は共通ベルと2択ベル正解の見分けが付かないので、ベル揃いをまとめて数える。
+   2択ベルは1/4.5で成立し、半分を取れるものとして扱う（複数の解析サイトの記載による）。
+   1/4.5が正しければ、こぼしを数えない方がブレは小さい。こぼしを数える方は1/4.5を使わない保険 */
+const NM = {
+  choice: 4.5,   // 2択ベルの成立確率（分母）
+  hit: 0.5,      // 2択ベルを取れる割合
+};
+/* ベル揃い合算（共通ベル＋2択ベル正解）の1Gあたりの確率 */
+const nmBellP = (i) => 1 / P.bell[i] + NM.hit / NM.choice;
+const NM_BELL = [0, 1, 2, 3, 4, 5].map((i) => 1 / nmBellP(i)); // 分母の表（1/6.89〜1/6.30）
+/* こぼしも数える場合：2択ベルの成立確率 q は決め打ちにせず、数えた結果に最も合う値を設定ごとに探す。
+   1G の結果は「ベル揃い（共通＋2択正解）／こぼし／その他」の3通り。q について上に凸なので三分探索で足りる */
+function nmProfileLogL(G, bell, kobo, i) {
+  const pb = 1 / P.bell[i];
+  const rest = Math.max(0, G - bell - kobo);
+  const f = (q) =>
+    bell * ln(pb + q * NM.hit) + (kobo > 0 ? kobo * ln(q * (1 - NM.hit)) : 0) + rest * ln(1 - pb - q);
+  let lo = 1e-9, hi = 1 - pb - 1e-9;
+  for (let n = 0; n < 80; n++) {
+    const a = lo + (hi - lo) / 3, b = hi - (hi - lo) / 3;
+    if (f(a) < f(b)) lo = a; else hi = b;
+  }
+  return f((lo + hi) / 2);
+}
+
 /* ---- 振り分け（％） ---- */
 const D = {
   cycle: {
@@ -210,6 +236,10 @@ const emptyState = () => ({
   cycle200: 0,
   logoS: 0,
   logoL: 0,
+  nmG: 0,          // 通常時＋運命分岐モードのG数（区間入力で加算）
+  nmBell: 0,       // その間のベル揃い（共通ベル＋2択ベル正解）
+  nmKobo: 0,       // その間の2択ベルこぼし
+  nmUseKobo: false, // こぼしも数えて判定する（オフなら2択ベル1/4.5の仮定で判定）
   lv2dN: 0,
   lv2dK: 0,
   lv2iN: 0,
@@ -316,6 +346,20 @@ function computePosterior(st) {
       const pb = 1 / P.bell[i], pm = 1 / P.artMiss[i];
       const rest = Math.max(0, AG - st.bell - st.artMiss);
       L += st.bell * ln(pb) + st.artMiss * ln(pm) + rest * ln(1 - pb - pm);
+    }
+
+    // 通常時・運命分岐モード中のベル揃い
+    // G数だけ入れてベルをまだ数えていない間は、0回として扱わず判定に入れない。
+    // こぼしを数える設定でも、こぼしが0の間は1/4.5の仮定で判定する（全部が共通ベルと見なされるのを防ぐ）
+    const NG = st.nmG || 0;
+    if (NG > 0 && st.nmBell > 0) {
+      const nb = Math.min(st.nmBell || 0, NG);
+      if (st.nmUseKobo && st.nmKobo > 0) {
+        L += nmProfileLogL(NG, nb, Math.min(st.nmKobo || 0, NG - nb), i);
+      } else {
+        const r = nmBellP(i);
+        L += nb * ln(r) + (NG - nb) * ln(1 - r);
+      }
     }
 
     // RB中 青7斜め揃い
@@ -857,6 +901,20 @@ const TOOL_CSS = `
 .u2-check__note { grid-column: 2; font-size: 0.68rem; line-height: 1.5; color: var(--um-muted); }
 .u2-check__auto { display: block; margin-top: 0.2rem; color: var(--um-accent); }
 
+/* G数の区間入力 */
+.u2-range { padding: 0.2rem 0 0.5rem; border-bottom: 1px solid var(--um-line-faint); }
+.u2-range__head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.u2-range__label { font-size: 0.84rem; font-weight: 500; letter-spacing: 0.04em; }
+.u2-range__total { min-height: 32px; padding: 0 0.1rem; background: transparent; border: 0; color: var(--um-muted); font: inherit; font-size: 0.74rem; white-space: nowrap; text-decoration: underline; text-decoration-color: var(--um-line); text-underline-offset: 0.3em; cursor: pointer; }
+.u2-range__total .um-num { font-size: 1.15rem; color: var(--um-accent-strong); }
+.u2-range__row { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.15rem; }
+.u2-range__input { flex: 1 1 0; min-width: 0; width: 0; height: 40px; padding: 0 0.15rem; background: transparent; border: 0; border-bottom: 1px solid var(--um-line); border-radius: 0; color: var(--um-accent-strong); font-size: 1.25rem; text-align: right; }
+.u2-range__input::placeholder { color: var(--um-muted); opacity: 0.45; }
+.u2-range__input:focus { outline: none; border-bottom-color: var(--um-accent); }
+.u2-range__sep { font-size: 0.8rem; color: var(--um-muted); }
+.u2-range__add.um-btn { flex: none; min-width: 6.6rem; min-height: 40px; padding-inline: 0.7em; white-space: nowrap; letter-spacing: 0.04em; }
+.u2-range__add .um-num { font-size: 1.1em; }
+
 /* 選択と操作 */
 .u2-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.4rem; }
 .u2-choice.um-btn { flex-direction: column; align-items: flex-start; gap: 0; padding: 0.45em 0.8em; text-align: left; letter-spacing: 0.04em; }
@@ -1099,6 +1157,7 @@ const KEY_LABEL = {
   bbMiss0: "BB中ハズレ 0pt", bbMiss3: "BB中ハズレ 3pt",
   cycle30: "初期真実 30pt", cycle50: "初期真実 50pt", cycle70: "初期真実 70pt", cycle200: "初期真実 200pt",
   logoS: "ロゴ発光・小", logoL: "ロゴ発光・大",
+  nmG: "通常時G数", nmBell: "通常時ベル揃い", nmKobo: "2択ベルこぼし", nmUseKobo: "ベルこぼしを数える",
   lv2dN: "同色BB後 ART突入", lv2dK: "同色BB後 Lv.2ナビ",
   lv2iN: "異色BB後 ART突入", lv2iK: "異色BB後 Lv.2ナビ",
   lv2oN: "REG後・その他 ART突入", lv2oK: "REG後・その他 Lv.2ナビ",
@@ -1441,6 +1500,44 @@ function NumField({ label, hint, value, onChange }) {
         onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ""))}
       />
     </label>
+  );
+}
+
+/* G数の区間入力：液晶のG数で「数え始め〜数え終わり」を入れると、その差を合計に足す。
+   開始を空欄にすると0から。足したあとは欄を空に戻す */
+function RangeAdd({ total, onAdd, onEdit, onError }) {
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+  const from = a === "" ? 0 : parseInt(a, 10);
+  const to = b === "" ? NaN : parseInt(b, 10);
+  const n = to - from;
+  const ok = n > 0;
+  const submit = () => {
+    if (!ok) { onError(b === "" ? "終わりのG数を入れてください" : "終わりは始まりより大きいG数にしてください"); return; }
+    onAdd(from, to);
+    setA("");
+    setB("");
+  };
+  const digits = (set) => (e) => set(e.target.value.replace(/[^0-9]/g, "").slice(0, 5));
+  const onKey = (e) => { if (e.key === "Enter") submit(); };
+  return (
+    <div className="u2-range">
+      <div className="u2-range__head">
+        <span className="u2-range__label">数えた区間のG数</span>
+        <button type="button" className="u2-range__total" onClick={onEdit} aria-label={`合計${total}G。押すと直接入力`}>
+          合計 <span className="um-num">{total}</span>G
+        </button>
+      </div>
+      <div className="u2-range__row">
+        <input className="u2-range__input um-num" inputMode="numeric" placeholder="0" aria-label="数え始めのG数" value={a} onFocus={(e) => e.target.select()} onChange={digits(setA)} onKeyDown={onKey} />
+        <span className="u2-range__sep" aria-hidden="true">〜</span>
+        <input className="u2-range__input um-num" inputMode="numeric" placeholder="208" aria-label="数え終わりのG数" value={b} onFocus={(e) => e.target.select()} onChange={digits(setB)} onKeyDown={onKey} />
+        <span className="u2-range__sep">G</span>
+        <button type="button" className="um-btn um-btn--small u2-range__add" onClick={submit}>
+          {ok ? <>＋<span className="um-num">{n}</span>G 加算</> : "加算"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1885,7 +1982,7 @@ function Umineko2Settei() {
   const anyInput =
     totalG > 0 || artG > 0 || num(st.rbG) > 0 ||
     st.cycle30 + st.cycle50 + st.cycle70 + st.cycle200 + st.logoS + st.logoL +
-    st.bbMiss0 + st.bbMiss3 + st.lv2dN + st.lv2iN + st.lv2oN > 0 ||
+    st.bbMiss0 + st.bbMiss3 + st.lv2dN + st.lv2iN + st.lv2oN > 0 || (st.nmG > 0 && st.nmBell > 0) ||
     st.conf.s2 || st.conf.s3 || st.conf.s4 || st.conf.s5 || st.conf.s6;
 
   const obs = (n, k, d = 1, table) =>
@@ -1916,6 +2013,10 @@ function Umineko2Settei() {
     if (num(st.rbG) > 0) out.push(`RB ${num(st.rbG)}G：青7斜め ${st.naname}（1/${fmt(denom(num(st.rbG), st.naname))}）/ 平行 ${st.heiko}`);
     if (st.cycle30 + st.cycle50 + st.cycle70 + st.cycle200 > 0) out.push(`周期初期pt 30:${st.cycle30} 50:${st.cycle50} 70:${st.cycle70} 200:${st.cycle200}`);
     if (st.logoS + st.logoL > 0) out.push(`ロゴ発光 小:${st.logoS} 大:${st.logoL}`);
+    if (st.nmG > 0) {
+      out.push(`通常時 ${st.nmG}G：ベル揃い ${st.nmBell}（1/${fmt(denom(st.nmG, st.nmBell), 2)}）` +
+        (st.nmUseKobo ? ` / こぼし ${st.nmKobo} → 共通ベル推定 1/${fmt(denom(st.nmG, st.nmBell - st.nmKobo), 1)}` : "（こぼしは数えない設定）"));
+    }
     if (st.bbMiss0 + st.bbMiss3 > 0) out.push(`BB中ハズレ 0pt:${st.bbMiss0} 3pt:${st.bbMiss3}`);
     if (st.lv2dN + st.lv2iN + st.lv2oN > 0)
       out.push(`Lv.2ナビ 同色 ${st.lv2dK}/${st.lv2dN}・異色 ${st.lv2iK}/${st.lv2iN}・REG他 ${st.lv2oK}/${st.lv2oN}（解析値×75%で評価）`);
@@ -2122,6 +2223,38 @@ function Umineko2Settei() {
     ),
     normal: (
       <>
+        <Divider>ベル（通常時・運命分岐モード中）</Divider>
+        <p className="u2-note"><T>通常時と運命分岐モード中に数えます。ボーナス中とART中は含めません。G数は液晶の表示で、数え始めと数え終わりを入れます。</T></p>
+        <RangeAdd
+          total={st.nmG}
+          onAdd={(from, to) => {
+            feel();
+            setNotice(null);
+            commit((s) => ({ ...s, nmG: (s.nmG || 0) + (to - from) }), { label: `通常時G数 ＋${to - from}G（${from}〜${to}）` });
+          }}
+          onEdit={() => { feel(); setSheet({ edit: "nmG" }); }}
+          onError={say}
+        />
+        <Check
+          checked={!!st.nmUseKobo}
+          onChange={(v) => { feel(); set("nmUseKobo", v); }}
+          label="ベルこぼしも数える"
+          note={st.nmUseKobo
+            ? `2択ベルの確率を1/${fmt(NM.choice)}と決めず、数えたこぼしから逆算して判定します。判別は遅くなります。こぼしが0の間は1/${fmt(NM.choice)}で判定します`
+            : `ベル揃いだけ数えます。2択ベルは1/${fmt(NM.choice)}で成立し、半分を取れるものとして判定します`}
+        />
+        <div className="u2-tiles">
+          {tile("nmBell", "ベル揃い", "共通・2択どちらも")}
+          {st.nmUseKobo ? tile("nmKobo", "2択ベルこぼし", `目安 1/${fmt(NM.choice / (1 - NM.hit))}`) : null}
+        </div>
+        <div className="u2-obsgrid u2-obsgrid--one">
+          <Observed label="ベル揃い" value={obs(st.nmG, st.nmBell, 2, st.nmUseKobo ? null : NM_BELL)} />
+          {st.nmUseKobo ? (
+            <Observed label="共通ベル（揃い−こぼし）" value={obs(st.nmG, Math.max(0, st.nmBell - st.nmKobo), 1, P.bell)} />
+          ) : null}
+          {st.nmUseKobo ? <Observed label="2択ベルこぼし" value={obs(st.nmG, st.nmKobo, 1)} /> : null}
+        </div>
+
         <Divider>ステージチェンジのロゴ発光（偶奇判別）</Divider>
         <div className="u2-tiles">
           {tile("logoS", "発光・小", "奇数設定で多い")}
@@ -2206,6 +2339,14 @@ function Umineko2Settei() {
             ["ハズレ", ...oneOver(P.artMiss)],
           ]}
           note="ART中のG数はLv.1＝30G、Lv.2＝50G、Lv.3＝90Gのセット数から数えます。"
+        />
+        <DbTable
+          title="通常時・運命分岐モード中のベル"
+          rows={[
+            ["ベル揃い合算", ...oneOver(NM_BELL, 2)],
+            ["うち共通ベル", ...oneOver(P.bell)],
+          ]}
+          note={`ベル揃い合算は、共通ベルに2択ベル正解を足した計算値です。2択ベルは1/${fmt(NM.choice)}で成立し、半分を取れるものとしています。「ベルこぼしも数える」がオンの時は1/${fmt(NM.choice)}を使わず、数えたこぼしから2択ベルの確率を逆算します。`}
         />
         <DbTable
           title="RB中"
